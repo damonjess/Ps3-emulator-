@@ -9,18 +9,39 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - name: Set up JDK
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
+
+      - name: Verify Gradle wrapper exists
+        run: |
+          if [ -f ./gradlew ]; then
+            echo "Found root gradlew"
+            echo "GRADLEW=./gradlew" >> $GITHUB_ENV
+          elif [ -f ./RetroRTS/gradlew ]; then
+            echo "Found RetroRTS gradlew"
+            echo "GRADLEW=./RetroRTS/gradlew" >> $GITHUB_ENV
+          else
+            echo "Error: gradlew not found at repo root or RetroRTS/" >&2
+            exit 1
+          fi
+
+      - name: Download Gradle wrapper jar
+        run: |
+          mkdir -p RetroRTS/gradle/wrapper
+          curl -L -o RetroRTS/gradle/wrapper/gradle-wrapper.jar \
+          https://raw.githubusercontent.com/gradle/gradle/v8.7.0/gradle/wrapper/gradle-wrapper.jar
+
       - name: Build with Gradle
         run: |
-          chmod +x gradlew
-          ./gradlew assembleDebug
+          chmod +x "$GRADLEW"
+          "$GRADLEW" -p RetroRTS :app:assembleDebug
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: debug-apk
-          path: app/build/outputs/apk/debug/
-          
+          path: RetroRTS/app/build/outputs/apk/debug/
