@@ -32,7 +32,8 @@ jobs:
       - name: Download Gradle wrapper jar
         run: |
           mkdir -p RetroRTS/gradle/wrapper
-          curl -L -o RetroRTS/gradle/wrapper/gradle-wrapper.jar           https://github.com/gradle/gradle/raw/v8.7.0/gradle/wrapper/gradle-wrapper.jar
+          curl -L -o RetroRTS/gradle/wrapper/gradle-wrapper.jar \
+          https://raw.githubusercontent.com/gradle/gradle/v8.7.0/gradle/wrapper/gradle-wrapper.jar
 
       - name: Build with Gradle
         run: |
