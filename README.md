@@ -17,12 +17,6 @@ This repository provides the Android app/input architecture and backend contract
 
 ## Key files
 
-- `app/src/main/java/com/example/ps3emu/core/EmulatorCore.kt`
-- `app/src/main/java/com/example/ps3emu/core/MockPs3Core.kt`
-- `app/src/main/java/com/example/ps3emu/core/NativePs3Core.kt`
-- `app/src/main/java/com/example/ps3emu/viewmodel/EmulatorViewModel.kt`
-- `app/src/main/java/com/example/ps3emu/ui/EmulatorScreen.kt`
-- `app/src/main/java/com/example/ps3emu/ui/VirtualGamepad.kt`
 
 ## Next steps
 

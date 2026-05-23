@@ -73,6 +73,23 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+
+private fun launchGameWithDosbox(game: GameEntry, settings: SettingsState): Boolean {
+    val profile = GameProfileStore.loadByGameName(game.name)
+    val configDir = File("/sdcard/RetroRTS/configs").apply { mkdirs() }
+    val configPath = File(configDir, "${profile.gameId}.conf").apply {
+        writeText(profile.toDosboxConfig())
+    }.absolutePath
+
+    val started = DosboxBridge.startDosbox(game.filePath, configPath)
+    if (started) {
+        DosboxBridge.setCpuCycles(profile.cycles)
+        DosboxBridge.setFrameCap(profile.frameCap)
+        DosboxBridge.setVolume(settings.volume)
+    }
+    return started
+}
+
 @Composable
 private fun RootApp(onRequestAudioFocus: () -> Unit, onAbandonAudioFocus: () -> Unit, onThermalMonitor: () -> Unit) {
     var screen by remember { mutableStateOf(AppScreen.SPLASH) }
@@ -96,12 +113,11 @@ private fun RootApp(onRequestAudioFocus: () -> Unit, onAbandonAudioFocus: () -> 
         AppScreen.ABOUT -> AboutScreen { screen = AppScreen.HOME }
         AppScreen.GAME -> activeGame?.let { DosboxPlayScreen(it, settings) { DosboxBridge.stopDosbox(); onAbandonAudioFocus(); activeGame = null; screen = AppScreen.HOME } }
         AppScreen.HOME -> LauncherScreen(settings, onSettings = { screen = AppScreen.SETTINGS }, onAbout = { screen = AppScreen.ABOUT }, onLaunch = { game ->
-            val p = GameProfileStore.loadByGameName(game.name)
-            val cfg = File("/sdcard/RetroRTS/configs").apply { mkdirs() }
-            val cfgPath = File(cfg, "${p.gameId}.conf").apply { writeText(p.toDosboxConfig()) }.absolutePath
-            if (DosboxBridge.startDosbox(game.filePath, cfgPath)) {
-                onRequestAudioFocus(); onThermalMonitor(); DosboxBridge.setCpuCycles(p.cycles); DosboxBridge.setFrameCap(60); DosboxBridge.setVolume(settings.volume)
-                activeGame = game; screen = AppScreen.GAME
+            if (launchGameWithDosbox(game, settings)) {
+                onRequestAudioFocus()
+                onThermalMonitor()
+                activeGame = game
+                screen = AppScreen.GAME
             }
         })
     }
