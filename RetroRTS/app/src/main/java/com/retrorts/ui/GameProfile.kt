@@ -1,0 +1,113 @@
+package com.retrorts.ui
+
+import org.json.JSONObject
+import java.io.File
+
+data class GameProfile(
+    val gameId: String,
+    val title: String,
+    val os: String,
+    val cycles: Int,
+    val frameCap: Int,
+    val memMb: Int,
+    val mixerRate: Int,
+    val machine: String,
+) {
+    fun toJson(): String = JSONObject()
+        .put("gameId", gameId)
+        .put("title", title)
+        .put("os", os)
+        .put("cycles", cycles)
+        .put("frameCap", frameCap)
+        .put("memMb", memMb)
+        .put("mixerRate", mixerRate)
+        .put("machine", machine)
+        .toString(2)
+
+    fun toDosboxConfig(): String = """
+        [dosbox]
+        machine=$machine
+        memsize=$memMb
+
+        [cpu]
+        core=dynamic
+        cycles=$cycles
+
+        [render]
+        frameskip=0
+
+        [mixer]
+        rate=$mixerRate
+        blocksize=1024
+        prebuffer=20
+
+        [sdl]
+        priority=higher,normal
+    """.trimIndent()
+
+    companion object {
+        fun fromJson(json: String): GameProfile {
+            val j = JSONObject(json)
+            return GameProfile(
+                gameId = j.getString("gameId"),
+                title = j.getString("title"),
+                os = j.getString("os"),
+                cycles = j.getInt("cycles"),
+                frameCap = j.getInt("frameCap"),
+                memMb = j.getInt("memMb"),
+                mixerRate = j.getInt("mixerRate"),
+                machine = j.getString("machine"),
+            )
+        }
+
+        fun presetRedAlert95() = GameProfile(
+            gameId = "cnc_red_alert_win95",
+            title = "Command & Conquer: Red Alert",
+            os = "Windows 95",
+            cycles = 30000,
+            frameCap = 60,
+            memMb = 64,
+            mixerRate = 44100,
+            machine = "svga_s3",
+        )
+
+        fun presetDune2000Win98() = GameProfile(
+            gameId = "dune_2000_win98",
+            title = "Dune 2000",
+            os = "Windows 98",
+            cycles = 35000,
+            frameCap = 60,
+            memMb = 128,
+            mixerRate = 48000,
+            machine = "svga_s3",
+        )
+    }
+}
+
+object GameProfileStore {
+    private const val ROOT = "/sdcard/RetroRTS/profiles"
+
+    fun ensurePresetProfiles() {
+        val dir = File(ROOT)
+        if (!dir.exists()) dir.mkdirs()
+        writeIfMissing(GameProfile.presetRedAlert95())
+        writeIfMissing(GameProfile.presetDune2000Win98())
+    }
+
+    private fun writeIfMissing(profile: GameProfile) {
+        val file = File(ROOT, "${profile.gameId}.json")
+        if (!file.exists()) file.writeText(profile.toJson())
+    }
+
+    fun loadByGameName(name: String): GameProfile {
+        ensurePresetProfiles()
+        val key = name.lowercase()
+        val gameId = when {
+            "red alert" in key -> "cnc_red_alert_win95"
+            "dune 2000" in key -> "dune_2000_win98"
+            else -> key.replace(" ", "_")
+        }
+        val file = File(ROOT, "$gameId.json")
+        return if (file.exists()) GameProfile.fromJson(file.readText()) else GameProfile.presetDune2000Win98()
+    }
+}
