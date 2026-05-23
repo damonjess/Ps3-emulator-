@@ -16,29 +16,15 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Verify Gradle wrapper exists
-        run: |
-          if [ -f ./gradlew ]; then
-            echo "Found root gradlew"
-            echo "GRADLEW=./gradlew" >> $GITHUB_ENV
-          elif [ -f ./RetroRTS/gradlew ]; then
-            echo "Found RetroRTS gradlew"
-            echo "GRADLEW=./RetroRTS/gradlew" >> $GITHUB_ENV
-          else
-            echo "Error: gradlew not found at repo root or RetroRTS/" >&2
-            exit 1
-          fi
-
-      - name: Download Gradle wrapper jar
-        run: |
-          mkdir -p RetroRTS/gradle/wrapper
-          curl -L -o RetroRTS/gradle/wrapper/gradle-wrapper.jar \
-          https://raw.githubusercontent.com/gradle/gradle/v8.7.0/gradle/wrapper/gradle-wrapper.jar
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.7'
 
       - name: Build with Gradle
         run: |
-          chmod +x "$GRADLEW"
-          "$GRADLEW" -p RetroRTS :app:assembleDebug
+          cd RetroRTS
+          gradle assembleDebug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
