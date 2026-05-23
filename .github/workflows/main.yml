@@ -29,6 +29,11 @@ jobs:
             exit 1
           fi
 
+      - name: Download Gradle wrapper jar
+        run: |
+          mkdir -p RetroRTS/gradle/wrapper
+          curl -L -o RetroRTS/gradle/wrapper/gradle-wrapper.jar           https://github.com/gradle/gradle/raw/v8.7.0/gradle/wrapper/gradle-wrapper.jar
+
       - name: Build with Gradle
         run: |
           chmod +x "$GRADLEW"
