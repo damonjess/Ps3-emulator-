@@ -21,6 +21,11 @@ jobs:
         with:
           gradle-version: '8.7'
 
+      - name: Clone DOSBox source
+        run: |
+          git clone --depth=1 https://github.com/dosbox-staging/dosbox-staging.git \
+          RetroRTS/app/src/main/cpp/dosbox
+
       - name: Build with Gradle
         run: |
           cd RetroRTS
