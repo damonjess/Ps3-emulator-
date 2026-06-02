@@ -12,6 +12,7 @@ add_library(retrorts_dosbox_jni SHARED
     dosbox_jni.cpp
     dosbox_audio.cpp
     emulator_core.cpp
+    dsi_core.cpp
     native-lib.cpp
 )
 

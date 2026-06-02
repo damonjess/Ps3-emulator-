@@ -29,4 +29,22 @@ class GameProfileStoreTest {
         assertTrue(config.contains("core=dynamic"))
         assertTrue(config.contains("cycles=30000"))
     }
+
+    @Test
+    fun `amiga profile maps to native amiga platform`() {
+        val profile = GameProfile.presetAmigaA500()
+
+        assertEquals("amiga", profile.platform)
+        assertEquals("amiga_a500", profile.machine)
+        assertEquals(50, profile.frameCap)
+    }
+
+    @Test
+    fun `dsi profile maps to native dsi platform`() {
+        val profile = GameProfile.presetNintendoDsi()
+
+        assertEquals("dsi", profile.platform)
+        assertEquals("nintendo_dsi", profile.machine)
+        assertEquals(60, profile.frameCap)
+    }
 }

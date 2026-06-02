@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.dp
 import com.retrorts.ui.DosboxBridge
 import com.retrorts.ui.GameProfileStore
 import com.retrorts.ui.GamePathValidator
+import com.retrorts.ui.NativeEmulatorBridge
 import kotlinx.coroutines.delay
 import java.io.File
 import kotlin.math.roundToInt
@@ -74,16 +75,23 @@ class MainActivity : ComponentActivity() {
 }
 
 
-private fun launchGameWithDosbox(game: GameEntry, settings: SettingsState): Boolean {
+private fun launchGameWithNativeBackend(game: GameEntry, settings: SettingsState): Boolean {
     val profile = GameProfileStore.loadByGameName(game.name)
     val configDir = File("/sdcard/RetroRTS/configs").apply { mkdirs() }
     val configPath = File(configDir, "${profile.gameId}.conf").apply {
         writeText(profile.toDosboxConfig())
     }.absolutePath
 
-    val started = DosboxBridge.startDosbox(game.filePath, configPath)
+    val started = when (profile.platform) {
+        "amiga" -> NativeEmulatorBridge.launchGame("AMIGA", game.filePath).isNotBlank()
+        "dsi" -> NativeEmulatorBridge.launchGame("NINTENDO_DSI", game.filePath).let { it.isNotBlank() && !it.startsWith("ERROR:") }
+        else -> DosboxBridge.startDosbox(game.filePath, configPath)
+    }
+
     if (started) {
-        DosboxBridge.setCpuCycles(profile.cycles)
+        if (profile.platform == "dosbox") {
+            DosboxBridge.setCpuCycles(profile.cycles)
+        }
         DosboxBridge.setFrameCap(profile.frameCap)
         DosboxBridge.setVolume(settings.volume)
     }
@@ -113,7 +121,7 @@ private fun RootApp(onRequestAudioFocus: () -> Unit, onAbandonAudioFocus: () -> 
         AppScreen.ABOUT -> AboutScreen { screen = AppScreen.HOME }
         AppScreen.GAME -> activeGame?.let { DosboxPlayScreen(it, settings) { DosboxBridge.stopDosbox(); onAbandonAudioFocus(); activeGame = null; screen = AppScreen.HOME } }
         AppScreen.HOME -> LauncherScreen(settings, onSettings = { screen = AppScreen.SETTINGS }, onAbout = { screen = AppScreen.ABOUT }, onLaunch = { game ->
-            if (launchGameWithDosbox(game, settings)) {
+            if (launchGameWithNativeBackend(game, settings)) {
                 onRequestAudioFocus()
                 onThermalMonitor()
                 activeGame = game
@@ -127,7 +135,7 @@ private fun RootApp(onRequestAudioFocus: () -> Unit, onAbandonAudioFocus: () -> 
 
 @Composable
 private fun LauncherScreen(settings: SettingsState, onSettings: () -> Unit, onAbout: () -> Unit, onLaunch: (GameEntry) -> Unit) {
-    val games = remember { mutableStateListOf(GameEntry("Dune 2000", "/sdcard/RetroRTS/Games/Dune2000"), GameEntry("C&C: Red Alert", "/sdcard/RetroRTS/Games/RedAlert")) }
+    val games = remember { mutableStateListOf(GameEntry("Dune 2000", "/sdcard/RetroRTS/Games/Dune2000"), GameEntry("C&C: Red Alert", "/sdcard/RetroRTS/Games/RedAlert"), GameEntry("Amiga A500 Demo", "/sdcard/RetroRTS/Games/AmigaA500"), GameEntry("Nintendo DSi Demo", "/sdcard/RetroRTS/Games/NintendoDSi/game.nds")) }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri: Uri? -> uri?.let { if (GamePathValidator.isValid(it.toString())) games.add(GameEntry("Imported ${games.size+1}", it.toString())) } }
     Scaffold(containerColor = Color(0xFF1B1A16)) { p -> Column(Modifier.fillMaxSize().padding(p).padding(12.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { Button(onClick=onSettings){Text("Settings")}; Button(onClick=onAbout){Text("About")}; Button(onClick={ picker.launch(null) }){Text("Add Game")}}
@@ -151,7 +159,7 @@ private fun SettingsScreen(state: SettingsState, onDone: (SettingsState) -> Unit
 private fun AboutScreen(onBack: () -> Unit) {
     Scaffold(containerColor = Color(0xFF1B1A16)) { p -> Column(Modifier.fillMaxSize().padding(p).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text("About RetroRTS", color=Color(0xFFD8C77A), style=MaterialTheme.typography.headlineSmall)
-        Text("Powered by DOSBox (open source).", color=Color.White)
+        Text("Powered by DOSBox, Amiga, and Nintendo DSi emulator backends (open source).", color=Color.White)
         Text("Uses AndroidX Jetpack Compose, Kotlin, and Android NDK/CMake.", color=Color.White)
         Text("Respect licenses for DOSBox and third-party libraries.", color=Color(0xFFB9B38A))
         Button(onClick=onBack){ Text("Back") }
@@ -165,7 +173,7 @@ private fun DosboxPlayScreen(game: GameEntry, settings: SettingsState, onExit: (
     if (showExitDialog) AlertDialog(onDismissRequest={showExitDialog=false}, confirmButton={Button({onExit()}){Text("Exit")}}, dismissButton={Button({showExitDialog=false}){Text("Cancel")}}, text={Text("Exit game session?")})
 
     Box(Modifier.fillMaxSize().background(Color.Black)) {
-        Box(Modifier.fillMaxSize().background(Color(0xFF111111)), contentAlignment = Alignment.Center) { Text("DOSBox Surface: ${game.name}", color = Color(0xFF93A17B)) }
+        Box(Modifier.fillMaxSize().background(Color(0xFF111111)), contentAlignment = Alignment.Center) { Text("Emulator Surface: ${game.name}", color = Color(0xFF93A17B)) }
         RtsOverlay(settings, Modifier.fillMaxSize(), onExit)
     }
 }

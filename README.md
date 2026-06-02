@@ -23,3 +23,14 @@ This repository provides the Android app/input architecture and backend contract
 1. Implement native `psxcore` JNI functions for PS1 + PS2 execution backends.
 2. Add BIOS/game-loader flow and storage permissions UX.
 3. Add Vulkan/OpenGL renderer path and audio pipeline.
+
+## Nintendo DSi backend status
+
+RetroRTS now has a native Nintendo DSi launch path wired through `NativeEmulatorBridge` and the native `dsi_core` adapter. To prepare the app for a real DSi core, place legally dumped DSi system files in `/sdcard/RetroRTS/system/dsi/`:
+
+- `bios7.bin`
+- `bios9.bin`
+- `firmware.bin`
+- `nand.bin`
+
+Place games as `.nds`, `.dsi`, or `.srl` files, for example `/sdcard/RetroRTS/Games/NintendoDSi/game.nds`. The current native adapter validates paths and required system files so a real DSi core can be connected behind the same launch contract.

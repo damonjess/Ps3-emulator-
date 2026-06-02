@@ -21,10 +21,11 @@ jobs:
         with:
           gradle-version: '8.7'
 
-      - name: Clone DOSBox source
+      - name: Prepare native emulator source folders
         run: |
-          git clone --depth=1 https://github.com/dosbox-staging/dosbox-staging.git \
-          RetroRTS/app/src/main/cpp/dosbox
+          mkdir -p RetroRTS/app/src/main/cpp/dosbox
+          mkdir -p RetroRTS/app/src/main/cpp/amiga
+          mkdir -p RetroRTS/app/src/main/cpp/dsi
 
       - name: Build with Gradle
         run: |

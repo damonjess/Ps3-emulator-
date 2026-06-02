@@ -12,6 +12,7 @@ data class GameProfile(
     val memMb: Int,
     val mixerRate: Int,
     val machine: String,
+    val platform: String = "dosbox",
 ) {
     fun toJson(): String = JSONObject()
         .put("gameId", gameId)
@@ -22,6 +23,7 @@ data class GameProfile(
         .put("memMb", memMb)
         .put("mixerRate", mixerRate)
         .put("machine", machine)
+        .put("platform", platform)
         .toString(2)
 
     fun toDosboxConfig(): String = """
@@ -57,6 +59,7 @@ data class GameProfile(
                 memMb = j.getInt("memMb"),
                 mixerRate = j.getInt("mixerRate"),
                 machine = j.getString("machine"),
+                platform = j.optString("platform", "dosbox"),
             )
         }
 
@@ -81,6 +84,30 @@ data class GameProfile(
             mixerRate = 48000,
             machine = "svga_s3",
         )
+
+        fun presetAmigaA500() = GameProfile(
+            gameId = "amiga_a500_demo",
+            title = "Amiga A500 Demo",
+            os = "Amiga Kickstart 1.3",
+            cycles = 0,
+            frameCap = 50,
+            memMb = 1,
+            mixerRate = 44100,
+            machine = "amiga_a500",
+            platform = "amiga",
+        )
+
+        fun presetNintendoDsi() = GameProfile(
+            gameId = "nintendo_dsi_demo",
+            title = "Nintendo DSi Demo",
+            os = "Nintendo DSi firmware",
+            cycles = 0,
+            frameCap = 60,
+            memMb = 16,
+            mixerRate = 48000,
+            machine = "nintendo_dsi",
+            platform = "dsi",
+        )
     }
 }
 
@@ -92,6 +119,8 @@ object GameProfileStore {
         if (!dir.exists()) dir.mkdirs()
         writeIfMissing(GameProfile.presetRedAlert95())
         writeIfMissing(GameProfile.presetDune2000Win98())
+        writeIfMissing(GameProfile.presetAmigaA500())
+        writeIfMissing(GameProfile.presetNintendoDsi())
     }
 
     private fun writeIfMissing(profile: GameProfile) {
@@ -105,6 +134,8 @@ object GameProfileStore {
         val gameId = when {
             "red alert" in key -> "cnc_red_alert_win95"
             "dune 2000" in key -> "dune_2000_win98"
+            "amiga" in key || "a500" in key -> "amiga_a500_demo"
+            "dsi" in key || "nintendo ds" in key -> "nintendo_dsi_demo"
             else -> key.replace(" ", "_")
         }
         val file = File(ROOT, "$gameId.json")
