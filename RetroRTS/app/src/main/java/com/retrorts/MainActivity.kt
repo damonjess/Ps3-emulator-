@@ -82,7 +82,7 @@ data class LaunchResult(val started: Boolean, val message: String? = null)
 
 private fun launchGameWithNativeBackend(context: Context, game: GameEntry, settings: SettingsState): LaunchResult {
     val profile = runCatching { GameProfileStore.loadByGameName(game.name) }.getOrElse {
-        return LaunchResult(false, "Could not load profile for ${game.name}: ${it.message ?: "unknown error"}")
+        return LaunchResult(false, "Could not load profile for ${game.name}")
     }
     val configPath = writeDosboxConfig(context, profile)
 
@@ -94,7 +94,7 @@ private fun launchGameWithNativeBackend(context: Context, game: GameEntry, setti
 
     val started = when (profile.platform) {
         "amiga", "dsi" -> nativeResult?.let { it.isNotBlank() && !it.startsWith("ERROR:") } == true
-        else -> DosboxBridge.startDosbox(game.filePath, configPath)
+        else -> DosboxBridge.startDosbox(game.filePath, configPath)  // DOSBox for PC games like Dune 2000
     }
 
     if (!started) {
@@ -174,7 +174,12 @@ private fun RootApp(onRequestAudioFocus: () -> Unit, onAbandonAudioFocus: () -> 
 
 @Composable
 private fun LauncherScreen(settings: SettingsState, onSettings: () -> Unit, onAbout: () -> Unit, onLaunch: (GameEntry) -> Unit) {
-    val games = remember { mutableStateListOf(GameEntry("Dune 2000", "/sdcard/RetroRTS/Games/Dune2000"), GameEntry("C&C: Red Alert", "/sdcard/RetroRTS/Games/RedAlert"), GameEntry("Amiga A500 Demo", "/sdcard/RetroRTS/Games/AmigaA500"), GameEntry("Nintendo DSi Demo", "/sdcard/RetroRTS/Games/NintendoDSi/game.nds")) }
+    val games = remember { mutableStateListOf(
+        GameEntry("Dune 2000", "/sdcard/RetroRTS/Games/Dune2000"),           // → DOSBox
+        GameEntry("Dune II (Amiga)", "/sdcard/RetroRTS/Games/Dune2.adf"),    // → Amiga
+        GameEntry("Amiga A500 Demo", "/sdcard/RetroRTS/Games/AmigaA500"),
+        GameEntry("Nintendo DSi Demo", "/sdcard/RetroRTS/Games/NintendoDSi/game.nds")
+    )}
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri: Uri? -> uri?.let { if (GamePathValidator.isValid(it.toString())) games.add(GameEntry("Imported ${games.size+1}", it.toString())) } }
     Scaffold(containerColor = Color(0xFF1B1A16)) { p -> Column(Modifier.fillMaxSize().padding(p).padding(12.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { Button(onClick=onSettings){Text("Settings")}; Button(onClick=onAbout){Text("About")}; Button(onClick={ picker.launch(null) }){Text("Add Game")}}

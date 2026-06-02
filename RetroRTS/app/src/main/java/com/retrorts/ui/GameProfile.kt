@@ -142,7 +142,7 @@ object GameProfileStore {
 
     private fun gameIdForName(key: String): String = when {
         "red alert" in key -> "cnc_red_alert_win95"
-        "dune 2000" in key -> "dune_2000_win98"
+        "dune 2000" in key -> "dune_2000_win98"      // This already uses DOSBox - GOOD
         "amiga" in key || "a500" in key -> "amiga_a500_demo"
         "dsi" in key || "nintendo ds" in key -> "nintendo_dsi_demo"
         else -> key.replace(" ", "_")
