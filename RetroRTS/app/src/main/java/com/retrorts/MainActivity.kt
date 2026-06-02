@@ -40,7 +40,7 @@ import com.retrorts.ui.GameProfile
 import com.retrorts.ui.GameProfileStore
 import com.retrorts.ui.GamePathValidator
 import com.retrorts.ui.NativeEmulatorBridge
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.*
 import java.io.File
 import kotlin.math.roundToInt
 
@@ -113,7 +113,7 @@ private fun launchGameWithNativeBackend(context: Context, game: GameEntry, setti
 
     val started = when (profile.platform) {
         "amiga", "dsi" -> nativeResult?.let { it.isNotBlank() && !it.startsWith("ERROR:") } == true
-        else -> DosboxBridge.startDosbox(game.filePath, configPath)  // DOSBox for PC games like Dune 2000
+        else -> DosboxBridge.startDosboxNative(game.filePath, configPath)  // DOSBox for PC games like Dune 2000
     }
 
     if (!started) {
@@ -145,12 +145,23 @@ private fun writeDosboxConfig(context: Context, profile: GameProfile, game: Game
 @Composable
 private fun RootApp(onRequestAudioFocus: () -> Unit, onAbandonAudioFocus: () -> Unit, onThermalMonitor: () -> Unit) {
     val context = androidx.compose.ui.platform.LocalContext.current
+    val scope = rememberCoroutineScope()
     var screen by remember { mutableStateOf(AppScreen.SPLASH) }
     var settings by remember { mutableStateOf(SettingsState()) }
     var activeGame by remember { mutableStateOf<GameEntry?>(null) }
     var launchError by remember { mutableStateOf<String?>(null) }
+    var isLaunching by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) { delay(1500); screen = AppScreen.HOME }
+
+    if (isLaunching) {
+        AlertDialog(
+            onDismissRequest = { },
+            confirmButton = { },
+            title = { Text("Launching Engine") },
+            text = { Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) { CircularProgressIndicator(); Text("Loading native components...", modifier = Modifier.padding(top = 8.dp)) } }
+        )
+    }
 
     launchError?.let { message ->
         AlertDialog(
@@ -176,14 +187,20 @@ private fun RootApp(onRequestAudioFocus: () -> Unit, onAbandonAudioFocus: () -> 
         AppScreen.ABOUT -> AboutScreen { screen = AppScreen.HOME }
         AppScreen.GAME -> activeGame?.let { DosboxPlayScreen(it, settings) { DosboxBridge.stopDosbox(); onAbandonAudioFocus(); activeGame = null; screen = AppScreen.HOME } }
         AppScreen.HOME -> LauncherScreen(settings, onSettings = { screen = AppScreen.SETTINGS }, onAbout = { screen = AppScreen.ABOUT }, onLaunch = { game ->
-            val result = launchGameWithNativeBackend(context, game, settings)
-            if (result.started) {
-                onRequestAudioFocus()
-                onThermalMonitor()
-                activeGame = game
-                screen = AppScreen.GAME
-            } else {
-                launchError = result.message
+            isLaunching = true
+            scope.launch {
+                val result = withContext(Dispatchers.IO) { // Changed to IO for blocking native loops
+                    launchGameWithNativeBackend(context, game, settings)
+                }
+                isLaunching = false
+                if (result.started) {
+                    onRequestAudioFocus()
+                    onThermalMonitor()
+                    activeGame = game
+                    screen = AppScreen.GAME
+                } else {
+                    launchError = result.message
+                }
             }
         })
     }
