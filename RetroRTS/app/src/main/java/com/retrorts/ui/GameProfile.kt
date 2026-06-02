@@ -26,7 +26,7 @@ data class GameProfile(
         .put("platform", platform)
         .toString(2)
 
-    fun toDosboxConfig(): String = """
+    fun toDosboxConfig(gameDirectoryPath: String): String = """
         [dosbox]
         machine=$machine
         memsize=$memMb
@@ -45,6 +45,15 @@ data class GameProfile(
 
         [sdl]
         priority=higher,normal
+
+        [autoexec]
+        @echo off
+        mount c "$gameDirectoryPath"
+        c:
+        if exist dune2000.exe dune2000.exe
+        if exist ra95.exe ra95.exe
+        if exist c&c.exe c&c.exe
+        if exist play.bat call play.bat
     """.trimIndent()
 
     companion object {
@@ -141,8 +150,8 @@ object GameProfileStore {
     }
 
     private fun gameIdForName(key: String): String = when {
-        "red alert" in key -> "cnc_red_alert_win95"
-        "dune 2000" in key -> "dune_2000_win98"      // This already uses DOSBox - GOOD
+        "red alert" in key || "command" in key || "c&c" in key -> "cnc_red_alert_win95"
+        "dune 2000" in key -> "dune_2000_win98"
         "amiga" in key || "a500" in key -> "amiga_a500_demo"
         "dsi" in key || "nintendo ds" in key -> "nintendo_dsi_demo"
         else -> key.replace(" ", "_")

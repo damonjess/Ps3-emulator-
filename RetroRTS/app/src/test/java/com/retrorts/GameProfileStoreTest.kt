@@ -23,11 +23,12 @@ class GameProfileStoreTest {
     @Test
     fun `dosbox config contains expected tuned keys`() {
         val profile = GameProfile.presetRedAlert95()
-        val config = profile.toDosboxConfig()
+        val config = profile.toDosboxConfig("/sdcard/dummy")
 
         assertTrue(config.contains("machine=svga_s3"))
         assertTrue(config.contains("core=dynamic"))
         assertTrue(config.contains("cycles=30000"))
+        assertTrue(config.contains("mount c \"/sdcard/dummy\""))
     }
 
     @Test

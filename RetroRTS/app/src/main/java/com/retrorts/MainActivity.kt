@@ -4,9 +4,13 @@ import android.content.Context
 import android.media.AudioAttributes
 import android.media.AudioFocusRequest
 import android.media.AudioManager
+import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.os.Environment
 import android.os.PowerManager
+import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -51,7 +55,22 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        requestStoragePermissions()
         setContent { RetroRtsTheme { RootApp(::requestAudioFocus, ::abandonAudioFocus, ::startThermalMonitor) } }
+    }
+
+    private fun requestStoragePermissions() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            if (!Environment.isExternalStorageManager()) {
+                runCatching {
+                    val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION)
+                    intent.data = Uri.parse("package:$packageName")
+                    startActivity(intent)
+                }
+            }
+        } else {
+            // Legacy permission request would go here if not already handled
+        }
     }
     private fun requestAudioFocus() { val am=getSystemService(AUDIO_SERVICE) as AudioManager; val req=AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN).setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_GAME).setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build()).setOnAudioFocusChangeListener { if (it<=0) DosboxBridge.stopDosbox() }.build(); audioFocusRequest=req; am.requestAudioFocus(req)}
     private fun abandonAudioFocus() { val am=getSystemService(AUDIO_SERVICE) as AudioManager; audioFocusRequest?.let { am.abandonAudioFocusRequest(it) } }
@@ -84,7 +103,7 @@ private fun launchGameWithNativeBackend(context: Context, game: GameEntry, setti
     val profile = runCatching { GameProfileStore.loadByGameName(game.name) }.getOrElse {
         return LaunchResult(false, "Could not load profile for ${game.name}")
     }
-    val configPath = writeDosboxConfig(context, profile)
+    val configPath = writeDosboxConfig(context, profile, game)
 
     val nativeResult = when (profile.platform) {
         "amiga" -> NativeEmulatorBridge.launchGame("AMIGA", game.filePath)
@@ -110,7 +129,7 @@ private fun launchGameWithNativeBackend(context: Context, game: GameEntry, setti
     return LaunchResult(true)
 }
 
-private fun writeDosboxConfig(context: Context, profile: GameProfile): String {
+private fun writeDosboxConfig(context: Context, profile: GameProfile, game: GameEntry): String {
     val configDir = context.getExternalFilesDir("configs") ?: File(context.filesDir, "configs")
     if (!configDir.exists()) {
         configDir.mkdirs()
@@ -118,7 +137,7 @@ private fun writeDosboxConfig(context: Context, profile: GameProfile): String {
 
     return runCatching {
         File(configDir, "${profile.gameId}.conf").apply {
-            writeText(profile.toDosboxConfig())
+            writeText(profile.toDosboxConfig(game.filePath))
         }.absolutePath
     }.getOrDefault("")
 }
