@@ -1,6 +1,8 @@
 package com.retrorts
 
+import com.retrorts.ui.DosboxBridge
 import com.retrorts.ui.GamePathValidator
+import com.retrorts.ui.NativeEmulatorBridge
 import com.retrorts.ui.PerfStats
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -26,5 +28,11 @@ class BridgeAndValidationTest {
         val stats = PerfStats(59.8f, 72.3f)
         assertTrue(stats.fps > 0f)
         assertTrue(stats.cpuUsagePercent in 0f..100f)
+    }
+
+    @Test
+    fun `native bridges fail gracefully when library is unavailable in unit tests`() {
+        assertFalse(DosboxBridge.startDosbox("/sdcard/RetroRTS/Games/Dune2000", ""))
+        assertTrue(NativeEmulatorBridge.launchGame("NINTENDO_DSI", "/missing/game.nds").startsWith("ERROR:"))
     }
 }

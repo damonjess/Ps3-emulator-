@@ -4,7 +4,7 @@
 
 extern "C"
 JNIEXPORT jstring JNICALL
-Java_com_retrorts_ui_NativeEmulatorBridge_launchGame(JNIEnv* env, jobject, jstring console, jstring romPath) {
+Java_com_retrorts_ui_NativeEmulatorBridge_launchGameNative(JNIEnv* env, jobject, jstring console, jstring romPath) {
     if (console == nullptr || romPath == nullptr) {
         return env->NewStringUTF("");
     }

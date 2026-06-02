@@ -115,12 +115,14 @@ object GameProfileStore {
     private const val ROOT = "/sdcard/RetroRTS/profiles"
 
     fun ensurePresetProfiles() {
-        val dir = File(ROOT)
-        if (!dir.exists()) dir.mkdirs()
-        writeIfMissing(GameProfile.presetRedAlert95())
-        writeIfMissing(GameProfile.presetDune2000Win98())
-        writeIfMissing(GameProfile.presetAmigaA500())
-        writeIfMissing(GameProfile.presetNintendoDsi())
+        runCatching {
+            val dir = File(ROOT)
+            if (!dir.exists()) dir.mkdirs()
+            writeIfMissing(GameProfile.presetRedAlert95())
+            writeIfMissing(GameProfile.presetDune2000Win98())
+            writeIfMissing(GameProfile.presetAmigaA500())
+            writeIfMissing(GameProfile.presetNintendoDsi())
+        }
     }
 
     private fun writeIfMissing(profile: GameProfile) {
@@ -131,14 +133,25 @@ object GameProfileStore {
     fun loadByGameName(name: String): GameProfile {
         ensurePresetProfiles()
         val key = name.lowercase()
-        val gameId = when {
-            "red alert" in key -> "cnc_red_alert_win95"
-            "dune 2000" in key -> "dune_2000_win98"
-            "amiga" in key || "a500" in key -> "amiga_a500_demo"
-            "dsi" in key || "nintendo ds" in key -> "nintendo_dsi_demo"
-            else -> key.replace(" ", "_")
-        }
+        val gameId = gameIdForName(key)
         val file = File(ROOT, "$gameId.json")
-        return if (file.exists()) GameProfile.fromJson(file.readText()) else GameProfile.presetDune2000Win98()
+        return runCatching {
+            if (file.exists()) GameProfile.fromJson(file.readText()) else presetForGameId(gameId)
+        }.getOrElse { presetForGameId(gameId) }
+    }
+
+    private fun gameIdForName(key: String): String = when {
+        "red alert" in key -> "cnc_red_alert_win95"
+        "dune 2000" in key -> "dune_2000_win98"
+        "amiga" in key || "a500" in key -> "amiga_a500_demo"
+        "dsi" in key || "nintendo ds" in key -> "nintendo_dsi_demo"
+        else -> key.replace(" ", "_")
+    }
+
+    private fun presetForGameId(gameId: String): GameProfile = when (gameId) {
+        "cnc_red_alert_win95" -> GameProfile.presetRedAlert95()
+        "amiga_a500_demo" -> GameProfile.presetAmigaA500()
+        "nintendo_dsi_demo" -> GameProfile.presetNintendoDsi()
+        else -> GameProfile.presetDune2000Win98()
     }
 }

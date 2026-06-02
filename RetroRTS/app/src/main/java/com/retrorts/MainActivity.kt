@@ -1,6 +1,6 @@
 package com.retrorts
 
-import android.app.AlertDialog
+import android.content.Context
 import android.media.AudioAttributes
 import android.media.AudioFocusRequest
 import android.media.AudioManager
@@ -32,6 +32,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import com.retrorts.ui.DosboxBridge
+import com.retrorts.ui.GameProfile
 import com.retrorts.ui.GameProfileStore
 import com.retrorts.ui.GamePathValidator
 import com.retrorts.ui.NativeEmulatorBridge
@@ -62,49 +63,84 @@ class MainActivity : ComponentActivity() {
     }
     private fun startThermalMonitor() {
         if (thermalRegistered) return
-        getSystemService(PowerManager::class.java)?.addThermalStatusListener(mainExecutor) {
-            DosboxBridge.notifyThermalLevel(
-                if (it >= PowerManager.THERMAL_STATUS_SEVERE) 3
-                else if (it >= PowerManager.THERMAL_STATUS_MODERATE) 2
-                else if (it >= PowerManager.THERMAL_STATUS_LIGHT) 1
-                else 0
-            )
+        runCatching {
+            getSystemService(PowerManager::class.java)?.addThermalStatusListener(mainExecutor) {
+                DosboxBridge.notifyThermalLevel(
+                    if (it >= PowerManager.THERMAL_STATUS_SEVERE) 3
+                    else if (it >= PowerManager.THERMAL_STATUS_MODERATE) 2
+                    else if (it >= PowerManager.THERMAL_STATUS_LIGHT) 1
+                    else 0
+                )
+            }
+            thermalRegistered = true
         }
-        thermalRegistered = true
     }
 }
 
 
-private fun launchGameWithNativeBackend(game: GameEntry, settings: SettingsState): Boolean {
-    val profile = GameProfileStore.loadByGameName(game.name)
-    val configDir = File("/sdcard/RetroRTS/configs").apply { mkdirs() }
-    val configPath = File(configDir, "${profile.gameId}.conf").apply {
-        writeText(profile.toDosboxConfig())
-    }.absolutePath
+data class LaunchResult(val started: Boolean, val message: String? = null)
+
+private fun launchGameWithNativeBackend(context: Context, game: GameEntry, settings: SettingsState): LaunchResult {
+    val profile = runCatching { GameProfileStore.loadByGameName(game.name) }.getOrElse {
+        return LaunchResult(false, "Could not load profile for ${game.name}: ${it.message ?: "unknown error"}")
+    }
+    val configPath = writeDosboxConfig(context, profile)
+
+    val nativeResult = when (profile.platform) {
+        "amiga" -> NativeEmulatorBridge.launchGame("AMIGA", game.filePath)
+        "dsi" -> NativeEmulatorBridge.launchGame("NINTENDO_DSI", game.filePath)
+        else -> null
+    }
 
     val started = when (profile.platform) {
-        "amiga" -> NativeEmulatorBridge.launchGame("AMIGA", game.filePath).isNotBlank()
-        "dsi" -> NativeEmulatorBridge.launchGame("NINTENDO_DSI", game.filePath).let { it.isNotBlank() && !it.startsWith("ERROR:") }
+        "amiga", "dsi" -> nativeResult?.let { it.isNotBlank() && !it.startsWith("ERROR:") } == true
         else -> DosboxBridge.startDosbox(game.filePath, configPath)
     }
 
-    if (started) {
-        if (profile.platform == "dosbox") {
-            DosboxBridge.setCpuCycles(profile.cycles)
-        }
-        DosboxBridge.setFrameCap(profile.frameCap)
-        DosboxBridge.setVolume(settings.volume)
+    if (!started) {
+        return LaunchResult(false, nativeResult?.takeIf { it.startsWith("ERROR:") } ?: "Could not launch ${game.name}. Check that the native library, game files, and storage paths are available.")
     }
-    return started
+
+    if (profile.platform == "dosbox") {
+        DosboxBridge.setCpuCycles(profile.cycles)
+    }
+    DosboxBridge.setFrameCap(profile.frameCap)
+    DosboxBridge.setVolume(settings.volume)
+
+    return LaunchResult(true)
+}
+
+private fun writeDosboxConfig(context: Context, profile: GameProfile): String {
+    val configDir = context.getExternalFilesDir("configs") ?: File(context.filesDir, "configs")
+    if (!configDir.exists()) {
+        configDir.mkdirs()
+    }
+
+    return runCatching {
+        File(configDir, "${profile.gameId}.conf").apply {
+            writeText(profile.toDosboxConfig())
+        }.absolutePath
+    }.getOrDefault("")
 }
 
 @Composable
 private fun RootApp(onRequestAudioFocus: () -> Unit, onAbandonAudioFocus: () -> Unit, onThermalMonitor: () -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     var screen by remember { mutableStateOf(AppScreen.SPLASH) }
     var settings by remember { mutableStateOf(SettingsState()) }
     var activeGame by remember { mutableStateOf<GameEntry?>(null) }
+    var launchError by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(Unit) { delay(1500); screen = AppScreen.HOME }
+
+    launchError?.let { message ->
+        AlertDialog(
+            onDismissRequest = { launchError = null },
+            confirmButton = { Button(onClick = { launchError = null }) { Text("OK") } },
+            title = { Text("Launch failed") },
+            text = { Text(message) },
+        )
+    }
 
     BackHandler(enabled = screen != AppScreen.SPLASH) {
         when (screen) {
@@ -121,11 +157,14 @@ private fun RootApp(onRequestAudioFocus: () -> Unit, onAbandonAudioFocus: () -> 
         AppScreen.ABOUT -> AboutScreen { screen = AppScreen.HOME }
         AppScreen.GAME -> activeGame?.let { DosboxPlayScreen(it, settings) { DosboxBridge.stopDosbox(); onAbandonAudioFocus(); activeGame = null; screen = AppScreen.HOME } }
         AppScreen.HOME -> LauncherScreen(settings, onSettings = { screen = AppScreen.SETTINGS }, onAbout = { screen = AppScreen.ABOUT }, onLaunch = { game ->
-            if (launchGameWithNativeBackend(game, settings)) {
+            val result = launchGameWithNativeBackend(context, game, settings)
+            if (result.started) {
                 onRequestAudioFocus()
                 onThermalMonitor()
                 activeGame = game
                 screen = AppScreen.GAME
+            } else {
+                launchError = result.message
             }
         })
     }

@@ -6,22 +6,46 @@ data class PerfStats(
 )
 
 object DosboxBridge {
-    init {
+    private val nativeLoaded = runCatching {
         System.loadLibrary("retrorts_dosbox_jni")
+    }.isSuccess
+
+    fun startDosbox(gameDirectory: String, configPath: String): Boolean =
+        nativeLoaded && runCatching { startDosboxNative(gameDirectory, configPath) }.getOrDefault(false)
+
+    fun stopDosbox() {
+        if (nativeLoaded) runCatching { stopDosboxNative() }
     }
 
-    fun startDosbox(gameDirectory: String, configPath: String): Boolean = startDosboxNative(gameDirectory, configPath)
-    fun stopDosbox() = stopDosboxNative()
-    fun setVolume(volume: Float) = setVolumeNative(volume)
-    fun submitAudioPcm16(buffer: ShortArray, frames: Int, channels: Int) = submitAudioPcm16Native(buffer, frames, channels)
-    fun saveState(gameId: String, slot: Int, path: String): Boolean = saveStateNative(gameId, slot, path)
-    fun loadState(gameId: String, slot: Int, path: String): Boolean = loadStateNative(gameId, slot, path)
+    fun setVolume(volume: Float) {
+        if (nativeLoaded) runCatching { setVolumeNative(volume) }
+    }
 
-    fun setCpuCycles(cycles: Int) = setCpuCyclesNative(cycles)
-    fun setFrameCap(fps: Int) = setFrameCapNative(fps)
-    fun notifyThermalLevel(level: Int) = notifyThermalLevelNative(level)
+    fun submitAudioPcm16(buffer: ShortArray, frames: Int, channels: Int) {
+        if (nativeLoaded) runCatching { submitAudioPcm16Native(buffer, frames, channels) }
+    }
+
+    fun saveState(gameId: String, slot: Int, path: String): Boolean =
+        nativeLoaded && runCatching { saveStateNative(gameId, slot, path) }.getOrDefault(false)
+
+    fun loadState(gameId: String, slot: Int, path: String): Boolean =
+        nativeLoaded && runCatching { loadStateNative(gameId, slot, path) }.getOrDefault(false)
+
+    fun setCpuCycles(cycles: Int) {
+        if (nativeLoaded) runCatching { setCpuCyclesNative(cycles) }
+    }
+
+    fun setFrameCap(fps: Int) {
+        if (nativeLoaded) runCatching { setFrameCapNative(fps) }
+    }
+
+    fun notifyThermalLevel(level: Int) {
+        if (nativeLoaded) runCatching { notifyThermalLevelNative(level) }
+    }
+
     fun getPerfStats(): PerfStats {
-        val arr = getPerfStatsNative()
+        if (!nativeLoaded) return PerfStats(fps = 0f, cpuUsagePercent = 0f)
+        val arr = runCatching { getPerfStatsNative() }.getOrDefault(floatArrayOf(0f, 0f))
         return PerfStats(fps = arr.getOrElse(0) { 0f }, cpuUsagePercent = arr.getOrElse(1) { 0f })
     }
 
