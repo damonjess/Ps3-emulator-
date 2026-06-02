@@ -7,7 +7,7 @@
 #include "dosbox_audio.h"
 
 // External entry point declarations provided by the fetched DOSBox library source
-extern int dosbox_main_entry(int argc, char* argv[]);
+extern "C" int dosbox_main_entry(int argc, char* argv[]);
 
 namespace {
 std::atomic<bool> g_running{false};

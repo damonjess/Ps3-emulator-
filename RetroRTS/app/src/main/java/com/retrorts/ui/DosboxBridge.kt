@@ -13,20 +13,33 @@ class DosboxBridge {
         external fun stopDosboxNative()
 
         @JvmStatic
-        external fun setCpuCycles(cycles: Int)
+        private external fun setCpuCyclesNative(cycles: Int)
 
         @JvmStatic
-        external fun setFrameCap(fps: Int)
+        private external fun setFrameCapNative(fps: Int)
 
         @JvmStatic
-        external fun setVolume(volume: Float)
+        private external fun setVolumeNative(volume: Float)
+
+        @JvmStatic
+        private external fun notifyThermalLevelNative(level: Int)
+
+        @JvmStatic
+        external fun getPerfStatsNative(): FloatArray
 
         @JvmStatic
         fun stopDosbox() = stopDosboxNative()
 
         @JvmStatic
-        fun notifyThermalLevel(level: Int) {
-            // Optional: Implement native hook if C++ side supports it
-        }
+        fun setCpuCycles(cycles: Int) = setCpuCyclesNative(cycles)
+
+        @JvmStatic
+        fun setFrameCap(fps: Int) = setFrameCapNative(fps)
+
+        @JvmStatic
+        fun setVolume(volume: Float) = setVolumeNative(volume)
+
+        @JvmStatic
+        fun notifyThermalLevel(level: Int) = notifyThermalLevelNative(level)
     }
 }
