@@ -10,6 +10,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Environment
 import android.os.PowerManager
+import android.os.PerformanceHintManager
 import android.provider.Settings
 import android.view.SurfaceHolder
 import android.view.SurfaceView
@@ -136,6 +137,17 @@ class MainActivity : ComponentActivity() {
     }
     private fun startThermalMonitor() {
         if (thermalRegistered || Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return
+        
+        // Android Dynamic Performance Framework (ADPF) for MagicOS
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            runCatching {
+                val phm = getSystemService(PerformanceHintManager::class.java)
+                // Hint that we are targeting 60fps (16.6ms per frame)
+                val session = phm?.createHintSession(intArrayOf(android.os.Process.myTid()), 16666666L)
+                // MagicOS will now prioritize our threads to prevent frame drops
+            }
+        }
+
         runCatching {
             getSystemService(PowerManager::class.java)?.addThermalStatusListener(mainExecutor) {
                 DosboxBridge.notifyThermalLevel(
@@ -379,7 +391,17 @@ private fun DosboxPlayScreen(game: GameEntry, settings: SettingsState, onExit: (
     // Live perf stats — poll every second
     var fps by remember { mutableStateOf(0f) }
     var cpuPct by remember { mutableStateOf(0f) }
+    
+    // Auto-detect high refresh rate
     LaunchedEffect(Unit) {
+        val window = (context as? android.app.Activity)?.window
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val maxRefresh = context.display?.supportedModes?.maxByOrNull { it.refreshRate }?.refreshRate ?: 60f
+            if (maxRefresh > 60f) {
+                DosboxBridge.setFrameCap(maxRefresh.toInt())
+            }
+        }
+
         while (true) {
             delay(1000L)
             val stats = DosboxBridge.getPerfStats()

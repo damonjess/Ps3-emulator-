@@ -17,6 +17,7 @@
 
     <application
         android:allowBackup="true"
+        android:enableOnBackInvokedCallback="true"
         android:icon="@drawable/ic_launcher_foreground"
         android:label="RetroRTS"
         android:roundIcon="@drawable/ic_launcher_foreground"

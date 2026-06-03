@@ -19,10 +19,17 @@ android {
 
         externalNativeBuild {
             cmake {
-                cppFlags += "-std=c++20"
+                cppFlags += listOf(
+                    "-std=c++20", 
+                    "-O3", 
+                    "-flto",
+                    "-march=armv9-a+sve2",
+                    "-ffp-contract=fast"
+                )
                 arguments += listOf(
                     "-DANDROID_STL=c++_shared",
-                    "-DANDROID_ABI=arm64-v8a"
+                    "-DANDROID_ABI=arm64-v8a",
+                    "-DANDROID_ARM_NEON=ON"
                 )
             }
         }

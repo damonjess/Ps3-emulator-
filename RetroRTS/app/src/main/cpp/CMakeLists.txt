@@ -17,6 +17,18 @@ surface_jni.cpp
 find_library(log-lib log)
 find_library(android-lib android)
 find_library(aaudio-lib aaudio)
+# Snapdragon Elite / ARMv9 performance tuning
+target_compile_options(retrorts_jni PRIVATE
+    "-fno-semantic-interposition"
+    "-fvisibility=hidden"
+)
+
+# Enable 16KB page alignment for Android 15/16 and high-end Snapdragons
+target_link_options(retrorts_jni PRIVATE
+    "-Wl,-z,max-page-size=16384"
+    "-Wl,--Bsymbolic-functions"
+)
+
 target_link_libraries(retrorts_jni
 ${log-lib}
 ${android-lib}

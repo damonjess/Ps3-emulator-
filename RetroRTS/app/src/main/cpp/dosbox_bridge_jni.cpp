@@ -15,9 +15,9 @@ namespace {
 std::atomic<bool> g_running{false};
 DosboxAudioEngine g_audio;
 std::atomic<int>   g_cpu_cycles{35000};
-std::atomic<int>   g_frame_cap{60};
+std::atomic<int>   g_frame_cap{120};
 std::atomic<int>   g_thermal_level{0};
-std::atomic<float> g_fps{60.0f};
+std::atomic<float> g_fps{120.0f};
 std::atomic<float> g_cpu_pct{42.0f};
 
 int effective_cycles() {
