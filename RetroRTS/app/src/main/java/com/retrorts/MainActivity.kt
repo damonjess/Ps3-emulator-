@@ -45,6 +45,7 @@ import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import com.retrorts.ui.ConsoleType
 import com.retrorts.ui.DosboxBridge
 import com.retrorts.ui.GameProfile
 import com.retrorts.ui.GameProfileStore
@@ -54,7 +55,12 @@ import kotlinx.coroutines.*
 import java.io.File
 import kotlin.math.roundToInt
 
-data class GameEntry(val name: String, val filePath: String) { val gameId get() = name.lowercase().replace(" ", "_") }
+data class GameEntry(
+    val name: String,
+    val filePath: String,
+    val gameId: String = name.lowercase().replace(" ", "_"),
+    val consoleType: ConsoleType = ConsoleType.detect(filePath)
+)
 data class SettingsState(var displayScale: Float = 1f, var sensitivity: Float = 1f, var volume: Float = 0.8f)
 
 enum class AppScreen { SPLASH, HOME, SETTINGS, ABOUT, GAME, NEEDS_PERMISSION }
@@ -145,37 +151,22 @@ class MainActivity : ComponentActivity() {
 }
 
 
-data class LaunchResult(val started: Boolean, val message: String? = null)
+data class LaunchResult(val started: Boolean, val message: String)
 
-private fun launchGameWithNativeBackend(context: Context, game: GameEntry, settings: SettingsState): LaunchResult {
-    val profile = runCatching { GameProfileStore.loadByGameName(game.name) }.getOrElse {
-        return LaunchResult(false, "Could not load profile for ${game.name}")
+private suspend fun launchGameWithNativeBackend(
+    context: Context,
+    game: GameEntry,
+    settings: SettingsState
+): LaunchResult = withContext(Dispatchers.IO) {
+    if (!DosboxBridge.isAvailable) {
+        return@withContext LaunchResult(false, "Native library not loaded. Check NDK build.")
     }
-    val configPath = writeDosboxConfig(context, profile, game)
-
-    val nativeResult = when (profile.platform) {
-        "amiga" -> NativeEmulatorBridge.launchGame("AMIGA", game.filePath)
-        "dsi" -> NativeEmulatorBridge.launchGame("NINTENDO_DSI", game.filePath)
-        "ps1" -> NativeEmulatorBridge.launchGame("PS1", game.filePath)
-        else -> null
-    }
-
-    val started = when (profile.platform) {
-        "amiga", "dsi", "ps1" -> nativeResult?.let { it.isNotBlank() && !it.startsWith("ERROR:") } == true
-        else -> DosboxBridge.startDosbox(game.filePath, configPath)  // DOSBox for PC games like Dune 2000
-    }
-
-    if (!started) {
-        return LaunchResult(false, nativeResult?.takeIf { it.startsWith("ERROR:") } ?: "Could not launch ${game.name}. Check that the native library, game files, and storage paths are available.")
-    }
-
-    if (profile.platform == "dosbox") {
-        DosboxBridge.setCpuCycles(profile.cycles)
-    }
-    DosboxBridge.setFrameCap(profile.frameCap)
-    DosboxBridge.setVolume(settings.volume)
-
-    return LaunchResult(true)
+    val result = NativeEmulatorBridge.launchGame(
+        console  = game.consoleType.name,   // "PS1", "DOSBOX", etc.
+        romPath  = game.filePath,
+        settings = settings
+    )
+    LaunchResult(result.started, result.message)
 }
 
 private fun writeDosboxConfig(context: Context, profile: GameProfile, game: GameEntry): String {
@@ -261,9 +252,7 @@ private fun RootApp(
         AppScreen.HOME -> LauncherScreen(settings, onSettings = { screen = AppScreen.SETTINGS }, onAbout = { screen = AppScreen.ABOUT }, onLaunch = { game ->
             isLaunching = true
             scope.launch {
-                val result = withContext(Dispatchers.IO) { // Changed to IO for blocking native loops
-                    launchGameWithNativeBackend(context, game, settings)
-                }
+                val result = launchGameWithNativeBackend(context, game, settings)
                 isLaunching = false
                 if (result.started) {
                     onRequestAudioFocus()
@@ -319,11 +308,39 @@ private fun LauncherScreen(settings: SettingsState, onSettings: () -> Unit, onAb
         GameEntry("Dune II (Amiga)",  "$gamesRoot/Dune2.adf"),
         GameEntry("Amiga A500 Demo",  "$gamesRoot/AmigaA500"),
         GameEntry("Nintendo DSi Demo","$gamesRoot/NintendoDSi/game.nds"),
-        GameEntry("PS1 Game",         "$gamesRoot/PlayStation/game.cue")
+        GameEntry("PS1 Game (add via Add .bin/.cue)", "$gamesRoot/PS1/game.cue")
     )}
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri: Uri? -> uri?.let { if (GamePathValidator.isValid(it.toString())) games.add(GameEntry("Imported ${games.size+1}", it.toString())) } }
+    val discPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        uri?.let {
+            val path = it.toString()
+            if (GamePathValidator.isValid(path)) {
+                // Derive a display name from the URI
+                val name = path.substringAfterLast('%').substringAfterLast('/')
+                    .substringBefore('?')
+                    .ifBlank { "PS1 Game ${games.size + 1}" }
+                games.add(GameEntry(name, path))
+            }
+        }
+    }
     Scaffold(containerColor = Color(0xFF1B1A16)) { p -> Column(Modifier.fillMaxSize().padding(p).padding(12.dp)) {
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { Button(onClick=onSettings){Text("Settings")}; Button(onClick=onAbout){Text("About")}; Button(onClick={ picker.launch(null) }){Text("Add Game")}}
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(onClick = onSettings) { Text("Settings") }
+            Button(onClick = onAbout) { Text("About") }
+            Button(onClick = { picker.launch(null) }) { Text("Add Folder") }
+            Button(onClick = {
+                discPicker.launch(
+                    arrayOf(
+                        "application/octet-stream",   // .bin / .img
+                        "application/x-cue",          // .cue
+                        "application/x-cd-image",     // .iso
+                        "*/*"                          // fallback
+                    )
+                )
+            }) { Text("Add .bin/.cue") }
+        }
         LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) { items(games) { g -> Card(colors= CardDefaults.cardColors(containerColor = Color(0xFF2B2920)), modifier=Modifier.fillMaxWidth()){ Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically){ Column(Modifier.weight(1f)){Text(g.name,color=Color(0xFFE6DCA3)); Text(g.filePath,color=Color(0xFFB9B38A))}; Button(onClick={ onLaunch(g) }){Text("Launch")}} } } }
     } }
 }

@@ -133,6 +133,30 @@ data class GameProfile(
     }
 }
 
+enum class ConsoleType {
+    DOSBOX,
+    AMIGA,
+    NINTENDO_DSI,
+    PS1,
+    UNKNOWN;
+
+    companion object {
+        fun detect(filePath: String): ConsoleType {
+            val n = filePath.lowercase()
+            return when {
+                n.endsWith(".nds") || n.endsWith(".dsi") || n.endsWith(".srl")
+                    -> NINTENDO_DSI
+                n.endsWith(".adf") || n.endsWith(".hdf") || n.endsWith(".dms")
+                    -> AMIGA
+                n.endsWith(".bin") || n.endsWith(".cue") || n.endsWith(".img")
+                    -> PS1
+                n.endsWith(".iso") -> PS1   // could be PS1 or PS2; default to PS1
+                else -> DOSBOX              // default for folders / .exe / .com
+            }
+        }
+    }
+}
+
 object GameProfileStore {
     private val ROOT: String get() =
         "${android.os.Environment.getExternalStorageDirectory().absolutePath}/RetroRTS/profiles"

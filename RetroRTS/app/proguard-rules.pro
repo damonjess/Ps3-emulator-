@@ -6,11 +6,18 @@
     native <methods>;
 }
 
+# Native Emulator Bridge
 -keep class com.retrorts.ui.NativeEmulatorBridge {
     native <methods>;
-    public static *** setSurface(...);
-    public static *** launchGame(...);
+    *** launchGame(...);
+    *** setSurface(...);
 }
+
+# LaunchResult data class
+-keep class com.retrorts.ui.NativeEmulatorBridge$LaunchResult { *; }
+
+# ConsoleType enum used by JNI string matching
+-keepclassmembers enum com.retrorts.ui.ConsoleType { *; }
 
 # Keep GameProfile JSON serialisation (uses org.json reflection)
 -keepclassmembers class com.retrorts.ui.GameProfile {

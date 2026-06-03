@@ -16,18 +16,23 @@ std::string LaunchGame(const std::string& console, const std::string& romPath) {
     }
 
     if (console == "PS1") {
-        const ps1::Ps1LaunchResult result = ps1::LaunchPs1Game(romPath);
+        auto result = retrorts::ps1::LaunchPs1Game(romPath);
         if (!result.ok) return "ERROR: " + result.message;
 
-        // Attempt to load the PCSX-ReARMed library
-        void* lib = dlopen("libpcsx_rearmed.so", RTLD_NOW);
-        if (!lib) {
-            return "ERROR: libpcsx_rearmed.so not found or failed to load: " + std::string(dlerror());
+        // dlopen PCSX-ReARMed if present
+        void* lib = dlopen("libpcsx_rearmed.so", RTLD_NOW | RTLD_NOLOAD);
+        if (lib) {
+            typedef int (*ps1_run_t)(const char* bios, const char* disc);
+            auto fn = reinterpret_cast<ps1_run_t>(dlsym(lib, "PCSX_Run"));
+            if (fn) {
+                const std::string bios =
+                    std::string("/sdcard/RetroRTS/system/ps1/scph1001.bin");
+                fn(bios.c_str(), result.resolvedCuePath.c_str());
+                return result.message;
+            }
         }
-
-        // Example entry point call (PCSX-ReARMed typically uses retro_run or custom entry)
-        // For this bridge, we just confirm it's loaded and ready.
-        return result.message + " (Backend libpcsx_rearmed.so loaded)";
+        // PCSX-ReARMed not loaded yet — validation passed, report clearly
+        return "PS1 BIOS and disc OK. Install libpcsx_rearmed.so to run.";
     }
 
     if (console == "AMIGA") {

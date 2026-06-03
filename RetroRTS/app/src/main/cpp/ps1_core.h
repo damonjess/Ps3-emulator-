@@ -1,17 +1,14 @@
-#ifndef RETRORTS_PS1_CORE_H
-#define RETRORTS_PS1_CORE_H
-
+#pragma once
 #include <string>
 
 namespace retrorts::ps1 {
 
 struct Ps1LaunchResult {
-    bool ok;
+    bool        ok;
     std::string message;
+    std::string resolvedCuePath;   // path to use when calling the emulator
 };
 
-Ps1LaunchResult LaunchPs1Game(const std::string& romPath);
+Ps1LaunchResult LaunchPs1Game(const std::string& discPath);
 
-} // namespace retrorts::ps1
-
-#endif // RETRORTS_PS1_CORE_H
+}  // namespace retrorts::ps1
