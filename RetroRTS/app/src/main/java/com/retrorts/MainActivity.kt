@@ -11,12 +11,16 @@ import android.os.Bundle
 import android.os.Environment
 import android.os.PowerManager
 import android.provider.Settings
+import android.view.SurfaceHolder
+import android.view.SurfaceView
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.ActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -33,8 +37,14 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import com.retrorts.ui.DosboxBridge
 import com.retrorts.ui.GameProfile
 import com.retrorts.ui.GameProfileStore
@@ -47,29 +57,67 @@ import kotlin.math.roundToInt
 data class GameEntry(val name: String, val filePath: String) { val gameId get() = name.lowercase().replace(" ", "_") }
 data class SettingsState(var displayScale: Float = 1f, var sensitivity: Float = 1f, var volume: Float = 0.8f)
 
-enum class AppScreen { SPLASH, HOME, SETTINGS, ABOUT, GAME }
+enum class AppScreen { SPLASH, HOME, SETTINGS, ABOUT, GAME, NEEDS_PERMISSION }
 
 class MainActivity : ComponentActivity() {
     private var audioFocusRequest: AudioFocusRequest? = null
     private var thermalRegistered = false
+
+    private val storagePermissionLauncher =
+        registerForActivityResult(StartActivityForResult()) { _: ActivityResult ->
+            // Re-check logic is in RootApp LaunchedEffect
+        }
+
+    private val legacyPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { _ ->
+            // Re-check logic is in RootApp LaunchedEffect
+        }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         requestStoragePermissions()
-        setContent { RetroRtsTheme { RootApp(::requestAudioFocus, ::abandonAudioFocus, ::startThermalMonitor) } }
+        setContent {
+            RetroRtsTheme {
+                RootApp(
+                    ::requestAudioFocus,
+                    ::abandonAudioFocus,
+                    ::startThermalMonitor,
+                    ::hasStoragePermission,
+                    ::requestStoragePermissions
+                )
+            }
+        }
     }
+
+    private fun hasStoragePermission(): Boolean =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            Environment.isExternalStorageManager()
+        } else {
+            checkSelfPermission(android.Manifest.permission.READ_EXTERNAL_STORAGE) ==
+                    android.content.pm.PackageManager.PERMISSION_GRANTED
+        }
 
     private fun requestStoragePermissions() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             if (!Environment.isExternalStorageManager()) {
-                runCatching {
-                    val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION)
-                    intent.data = Uri.parse("package:$packageName")
-                    startActivity(intent)
+                val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
+                    data = Uri.parse("package:$packageName")
+                }
+                try {
+                    storagePermissionLauncher.launch(intent)
+                } catch (e: Exception) {
+                    // Fallback to the general settings list if the package-specific intent fails
+                    storagePermissionLauncher.launch(Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
                 }
             }
         } else {
-            // Legacy permission request would go here if not already handled
+            legacyPermissionLauncher.launch(
+                arrayOf(
+                    android.Manifest.permission.READ_EXTERNAL_STORAGE,
+                    android.Manifest.permission.WRITE_EXTERNAL_STORAGE
+                )
+            )
         }
     }
     private fun requestAudioFocus() { val am=getSystemService(AUDIO_SERVICE) as AudioManager; val req=AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN).setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_GAME).setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build()).setOnAudioFocusChangeListener { if (it<=0) DosboxBridge.stopDosbox() }.build(); audioFocusRequest=req; am.requestAudioFocus(req)}
@@ -81,7 +129,7 @@ class MainActivity : ComponentActivity() {
         abandonAudioFocus()
     }
     private fun startThermalMonitor() {
-        if (thermalRegistered) return
+        if (thermalRegistered || Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return
         runCatching {
             getSystemService(PowerManager::class.java)?.addThermalStatusListener(mainExecutor) {
                 DosboxBridge.notifyThermalLevel(
@@ -108,12 +156,13 @@ private fun launchGameWithNativeBackend(context: Context, game: GameEntry, setti
     val nativeResult = when (profile.platform) {
         "amiga" -> NativeEmulatorBridge.launchGame("AMIGA", game.filePath)
         "dsi" -> NativeEmulatorBridge.launchGame("NINTENDO_DSI", game.filePath)
+        "ps1" -> NativeEmulatorBridge.launchGame("PS1", game.filePath)
         else -> null
     }
 
     val started = when (profile.platform) {
-        "amiga", "dsi" -> nativeResult?.let { it.isNotBlank() && !it.startsWith("ERROR:") } == true
-        else -> DosboxBridge.startDosboxNative(game.filePath, configPath)  // DOSBox for PC games like Dune 2000
+        "amiga", "dsi", "ps1" -> nativeResult?.let { it.isNotBlank() && !it.startsWith("ERROR:") } == true
+        else -> DosboxBridge.startDosbox(game.filePath, configPath)  // DOSBox for PC games like Dune 2000
     }
 
     if (!started) {
@@ -143,7 +192,13 @@ private fun writeDosboxConfig(context: Context, profile: GameProfile, game: Game
 }
 
 @Composable
-private fun RootApp(onRequestAudioFocus: () -> Unit, onAbandonAudioFocus: () -> Unit, onThermalMonitor: () -> Unit) {
+private fun RootApp(
+    onRequestAudioFocus: () -> Unit,
+    onAbandonAudioFocus: () -> Unit,
+    onThermalMonitor: () -> Unit,
+    hasStoragePermission: () -> Boolean,
+    onRequestStorage: () -> Unit
+) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val scope = rememberCoroutineScope()
     var screen by remember { mutableStateOf(AppScreen.SPLASH) }
@@ -152,7 +207,23 @@ private fun RootApp(onRequestAudioFocus: () -> Unit, onAbandonAudioFocus: () -> 
     var launchError by remember { mutableStateOf<String?>(null) }
     var isLaunching by remember { mutableStateOf(false) }
 
-    LaunchedEffect(Unit) { delay(1500); screen = AppScreen.HOME }
+    LaunchedEffect(Unit) {
+        delay(1500)
+        screen = if (hasStoragePermission()) AppScreen.HOME else AppScreen.NEEDS_PERMISSION
+    }
+
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                if (screen == AppScreen.NEEDS_PERMISSION && hasStoragePermission()) {
+                    screen = AppScreen.HOME
+                }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     if (isLaunching) {
         AlertDialog(
@@ -183,6 +254,7 @@ private fun RootApp(onRequestAudioFocus: () -> Unit, onAbandonAudioFocus: () -> 
 
     when (screen) {
         AppScreen.SPLASH -> SplashScreen()
+        AppScreen.NEEDS_PERMISSION -> PermissionScreen(onRequestStorage)
         AppScreen.SETTINGS -> SettingsScreen(settings) { settings = it; screen = AppScreen.HOME }
         AppScreen.ABOUT -> AboutScreen { screen = AppScreen.HOME }
         AppScreen.GAME -> activeGame?.let { DosboxPlayScreen(it, settings) { DosboxBridge.stopDosbox(); onAbandonAudioFocus(); activeGame = null; screen = AppScreen.HOME } }
@@ -209,12 +281,45 @@ private fun RootApp(onRequestAudioFocus: () -> Unit, onAbandonAudioFocus: () -> 
 @Composable private fun SplashScreen() { Box(Modifier.fillMaxSize().background(Color(0xFF1B1A16)), contentAlignment = Alignment.Center) { Column(horizontalAlignment=Alignment.CenterHorizontally){ Text("RetroRTS", color=Color(0xFFD8C77A), style=MaterialTheme.typography.headlineLarge, fontWeight=FontWeight.Bold); Text("Command Center Booting...", color=Color(0xFF93A17B)) } } }
 
 @Composable
+private fun PermissionScreen(onRequest: () -> Unit) {
+    Box(
+        Modifier.fillMaxSize().background(Color(0xFF1B1A16)),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+            modifier = Modifier.padding(24.dp)
+        ) {
+            Text(
+                "Storage Access Required",
+                color = Color(0xFFD8C77A),
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                "RetroRTS needs 'All Files Access' to read your game files " +
+                        "from /sdcard/RetroRTS/Games. Tap the button below, then " +
+                        "enable the permission and return to the app.",
+                color = Color.White,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            )
+            Button(onClick = onRequest) { Text("Grant Storage Access") }
+        }
+    }
+}
+
+@Composable
 private fun LauncherScreen(settings: SettingsState, onSettings: () -> Unit, onAbout: () -> Unit, onLaunch: (GameEntry) -> Unit) {
+    val gamesRoot = remember {
+        "${android.os.Environment.getExternalStorageDirectory().absolutePath}/RetroRTS/Games"
+    }
     val games = remember { mutableStateListOf(
-        GameEntry("Dune 2000", "/sdcard/RetroRTS/Games/Dune2000"),           // → DOSBox
-        GameEntry("Dune II (Amiga)", "/sdcard/RetroRTS/Games/Dune2.adf"),    // → Amiga
-        GameEntry("Amiga A500 Demo", "/sdcard/RetroRTS/Games/AmigaA500"),
-        GameEntry("Nintendo DSi Demo", "/sdcard/RetroRTS/Games/NintendoDSi/game.nds")
+        GameEntry("Dune 2000",        "$gamesRoot/Dune2000"),
+        GameEntry("Dune II (Amiga)",  "$gamesRoot/Dune2.adf"),
+        GameEntry("Amiga A500 Demo",  "$gamesRoot/AmigaA500"),
+        GameEntry("Nintendo DSi Demo","$gamesRoot/NintendoDSi/game.nds"),
+        GameEntry("PS1 Game",         "$gamesRoot/PlayStation/game.cue")
     )}
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri: Uri? -> uri?.let { if (GamePathValidator.isValid(it.toString())) games.add(GameEntry("Imported ${games.size+1}", it.toString())) } }
     Scaffold(containerColor = Color(0xFF1B1A16)) { p -> Column(Modifier.fillMaxSize().padding(p).padding(12.dp)) {
@@ -249,26 +354,157 @@ private fun AboutScreen(onBack: () -> Unit) {
 @Composable
 private fun DosboxPlayScreen(game: GameEntry, settings: SettingsState, onExit: () -> Unit) {
     var showExitDialog by remember { mutableStateOf(false) }
+    var saveSlot by remember { mutableStateOf(1) }
+    var statusMsg by remember { mutableStateOf("") }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val scope = rememberCoroutineScope()
+
+    // Live perf stats — poll every second
+    var fps by remember { mutableStateOf(0f) }
+    var cpuPct by remember { mutableStateOf(0f) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(1000L)
+            val stats = DosboxBridge.getPerfStats()
+            fps    = stats.getOrElse(0) { 0f }
+            cpuPct = stats.getOrElse(1) { 0f }
+        }
+    }
+
     BackHandler { showExitDialog = true }
-    if (showExitDialog) AlertDialog(onDismissRequest={showExitDialog=false}, confirmButton={Button({onExit()}){Text("Exit")}}, dismissButton={Button({showExitDialog=false}){Text("Cancel")}}, text={Text("Exit game session?")})
+
+    if (showExitDialog) {
+        AlertDialog(
+            onDismissRequest = { showExitDialog = false },
+            confirmButton    = { Button({ onExit() }) { Text("Exit") } },
+            dismissButton    = { Button({ showExitDialog = false }) { Text("Cancel") } },
+            text             = { Text("Exit game session? Unsaved progress will be lost.") }
+        )
+    }
 
     Box(Modifier.fillMaxSize().background(Color.Black)) {
-        Box(Modifier.fillMaxSize().background(Color(0xFF111111)), contentAlignment = Alignment.Center) { Text("Emulator Surface: ${game.name}", color = Color(0xFF93A17B)) }
-        RtsOverlay(settings, Modifier.fillMaxSize(), onExit)
+
+        // ── Native render surface ─────────────────────────────────────
+        AndroidView(
+            modifier = Modifier.fillMaxSize(),
+            factory = { ctx ->
+                SurfaceView(ctx).apply {
+                    holder.addCallback(object : SurfaceHolder.Callback {
+                        override fun surfaceCreated(h: SurfaceHolder) {
+                            NativeEmulatorBridge.setSurface(h.surface)
+                        }
+                        override fun surfaceChanged(h: SurfaceHolder, f: Int, w: Int, ht: Int) {
+                            NativeEmulatorBridge.setSurface(h.surface)
+                        }
+                        override fun surfaceDestroyed(h: SurfaceHolder) {
+                            NativeEmulatorBridge.setSurface(null)
+                        }
+                    })
+                }
+            }
+        )
+
+        // ── HUD overlay ───────────────────────────────────────────────
+        Column(
+            Modifier
+                .align(Alignment.TopStart)
+                .padding(8.dp)
+        ) {
+            Text(
+                "${"%.0f".format(fps)} fps  •  ${"%.0f".format(cpuPct)}% cpu",
+                color = Color(0xAAD8C77A),
+                style = MaterialTheme.typography.labelSmall
+            )
+            if (statusMsg.isNotBlank()) {
+                Text(statusMsg, color = Color(0xFFD8C77A),
+                    style = MaterialTheme.typography.labelSmall)
+            }
+        }
+
+        // ── Bottom toolbar ────────────────────────────────────────────
+        Column(
+            Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .background(Color(0xCC000000))
+                .padding(8.dp)
+        ) {
+            // Save/load slot row
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Slot:", color = Color.White)
+                (1..3).forEach { slot ->
+                    val selected = slot == saveSlot
+                    Button(
+                        onClick = { saveSlot = slot },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (selected) Color(0xFF6D7F3B) else Color(0xFF3A3A3A)
+                        ),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                        modifier = Modifier.height(32.dp)
+                    ) { Text("$slot") }
+                }
+                Spacer(Modifier.weight(1f))
+                Button(
+                    onClick = {
+                        scope.launch(Dispatchers.IO) {
+                            val dir = "${android.os.Environment.getExternalStorageDirectory()}/RetroRTS/saves"
+                            java.io.File(dir).mkdirs()
+                            val path = "$dir/${game.gameId}_slot$saveSlot.sav"
+                            val ok = DosboxBridge.saveState(game.gameId, saveSlot, path)
+                            withContext(Dispatchers.Main) {
+                                statusMsg = if (ok) "Saved slot $saveSlot ✓" else "Save failed"
+                            }
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3A5A3A))
+                ) { Text("Save") }
+                Button(
+                    onClick = {
+                        scope.launch(Dispatchers.IO) {
+                            val path = "${android.os.Environment.getExternalStorageDirectory()}" +
+                                       "/RetroRTS/saves/${game.gameId}_slot$saveSlot.sav"
+                            val ok = DosboxBridge.loadState(game.gameId, saveSlot, path)
+                            withContext(Dispatchers.Main) {
+                                statusMsg = if (ok) "Loaded slot $saveSlot ✓" else "No save in slot $saveSlot"
+                            }
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3A3A5A))
+                ) { Text("Load") }
+            }
+
+            // Gamepad row
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                RtsOverlay(settings, Modifier.weight(1f), onExit)
+            }
+        }
     }
 }
 
+// Keep RtsOverlay as before but remove the outer Box that filled the whole
+// screen — it now lives inside the bottom toolbar row:
 @Composable
 private fun RtsOverlay(settings: SettingsState, modifier: Modifier, onExit: () -> Unit) {
-    var cursor by remember { mutableStateOf(Offset(300f, 300f)) }
-    var keyboard by remember { mutableStateOf(false) }
-    Box(modifier.pointerInput(settings.sensitivity) { detectDragGestures { change, drag -> change.consume(); cursor = Offset(cursor.x + drag.x * settings.sensitivity, cursor.y + drag.y * settings.sensitivity) } }) {
-        Box(Modifier.offset { IntOffset(cursor.x.roundToInt(), cursor.y.roundToInt()) }.size((20 * settings.displayScale).dp).background(Color(0xFFCCDD88), CircleShape).border(2.dp, Color.Black, CircleShape))
-        Row(Modifier.align(Alignment.BottomCenter).padding(16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Button(onClick = {}) { Text("Left") }; Button(onClick = {}) { Text("Right") }
-            Row(verticalAlignment = Alignment.CenterVertically) { Text("Keyboard", color = Color(0xFFD8C77A)); Switch(checked = keyboard, onCheckedChange = { keyboard = it }) }
-            Button(onClick = onExit) { Text("Exit") }
-        }
+    Row(
+        modifier = modifier.padding(4.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Button(onClick = {}) { Text("L") }
+        Button(onClick = {}) { Text("R") }
+        Spacer(Modifier.weight(1f))
+        Button(
+            onClick = onExit,
+            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF8B2020))
+        ) { Text("Exit") }
     }
 }
 

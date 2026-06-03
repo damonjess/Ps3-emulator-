@@ -5,10 +5,6 @@ pluginManagement {
         gradlePluginPortal()
     }
 }
-plugins {
-    id("org.gradle.toolchains.foojay-resolver-convention") version "0.10.0"
-}
-
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
@@ -17,6 +13,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "Ps3-emulator"
-include(":app")
-project(":app").projectDir = file("RetroRTS/app")
+rootProject.name = "RetroRTS_Root"
+include(":RetroRTS:app")

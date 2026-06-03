@@ -21,6 +21,7 @@
         android:label="RetroRTS"
         android:roundIcon="@drawable/ic_launcher_foreground"
         android:supportsRtl="true"
+        android:requestLegacyExternalStorage="true"
         android:theme="@style/Theme.RetroRTS">
         <activity
             android:name=".MainActivity"

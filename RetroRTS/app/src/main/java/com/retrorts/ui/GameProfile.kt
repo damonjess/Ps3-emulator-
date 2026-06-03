@@ -1,5 +1,6 @@
 package com.retrorts.ui
 
+import android.os.Environment
 import org.json.JSONObject
 import java.io.File
 
@@ -117,11 +118,24 @@ data class GameProfile(
             machine = "nintendo_dsi",
             platform = "dsi",
         )
+
+        fun presetPs1() = GameProfile(
+            gameId = "ps1_game_demo",
+            title = "PS1 Game",
+            os = "PlayStation 1",
+            cycles = 0,
+            frameCap = 60,
+            memMb = 2,
+            mixerRate = 44100,
+            machine = "psx",
+            platform = "ps1",
+        )
     }
 }
 
 object GameProfileStore {
-    private const val ROOT = "/sdcard/RetroRTS/profiles"
+    private val ROOT: String get() =
+        "${android.os.Environment.getExternalStorageDirectory().absolutePath}/RetroRTS/profiles"
 
     fun ensurePresetProfiles() {
         runCatching {
@@ -131,6 +145,7 @@ object GameProfileStore {
             writeIfMissing(GameProfile.presetDune2000Win98())
             writeIfMissing(GameProfile.presetAmigaA500())
             writeIfMissing(GameProfile.presetNintendoDsi())
+            writeIfMissing(GameProfile.presetPs1())
         }
     }
 
@@ -154,6 +169,7 @@ object GameProfileStore {
         "dune 2000" in key -> "dune_2000_win98"
         "amiga" in key || "a500" in key -> "amiga_a500_demo"
         "dsi" in key || "nintendo ds" in key -> "nintendo_dsi_demo"
+        "ps1" in key || "playstation" in key || "psx" in key -> "ps1_game_demo"
         else -> key.replace(" ", "_")
     }
 
@@ -161,6 +177,7 @@ object GameProfileStore {
         "cnc_red_alert_win95" -> GameProfile.presetRedAlert95()
         "amiga_a500_demo" -> GameProfile.presetAmigaA500()
         "nintendo_dsi_demo" -> GameProfile.presetNintendoDsi()
+        "ps1_game_demo" -> GameProfile.presetPs1()
         else -> GameProfile.presetDune2000Win98()
     }
 }
