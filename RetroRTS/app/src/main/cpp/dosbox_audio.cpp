@@ -38,4 +38,9 @@ void DosboxAudioEngine::submitPcm16(const int16_t* data, int frames, int channel
     }
 }
 
+extern "C" void SPU_playSample(unsigned char ch) {
+    // stub — prevents linker error, audio wired in next step
+    (void)ch;
+}
+
 

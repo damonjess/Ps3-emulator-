@@ -4,10 +4,10 @@ class DosboxBridge {
 companion object {
 private const val TAG = "DosboxBridge"
     val isAvailable: Boolean = runCatching {
-        System.loadLibrary("retrorts_jni")
+        System.loadLibrary("pcsx_rearmed")
         true
     }.getOrElse {
-        Log.e(TAG, "Failed to load retrorts_jni: ${it.message}")
+        Log.e(TAG, "Failed to load pcsx_rearmed: ${it.message}")
         false
     }
 

@@ -4,7 +4,7 @@ import com.retrorts.SettingsState
 
 object NativeEmulatorBridge {
     private val nativeLoaded = runCatching {
-        System.loadLibrary("retrorts_jni")
+        System.loadLibrary("pcsx_rearmed")
     }.isSuccess
 
     data class LaunchResult(val started: Boolean, val message: String)

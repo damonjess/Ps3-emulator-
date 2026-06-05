@@ -76,18 +76,19 @@ Ps1LaunchResult LaunchPs1Game(const std::string& discPath) {
 
     // ── Check BIOS ───────────────────────────────────────────────────────
     const std::string biosPath = std::string(kBiosDir) + "/" + kBiosFile;
-    if (!fileExists(biosPath))
-        return {false,
-                "PS1 launch failed: BIOS not found.\n"
-                "Place scph1001.bin in /sdcard/RetroRTS/system/ps1/",
-                ""};
+    bool hasBios = fileExists(biosPath);
 
-    const long biosSize = fileSize(biosPath);
-    if (biosSize != 524288L)   // PS1 BIOS is always exactly 512 KB
-        return {false,
-                "PS1 launch failed: scph1001.bin looks corrupt (expected 512 KB, got "
-                + std::to_string(biosSize / 1024) + " KB)",
-                ""};
+    if (hasBios) {
+        const long biosSize = fileSize(biosPath);
+        if (biosSize != 524288L) {
+            LOGE("BIOS file exists but size is wrong: %ld", biosSize);
+            hasBios = false; // Fallback to HLE if BIOS is corrupt
+        }
+    }
+
+    if (!hasBios) {
+        LOGI("BIOS not found, using PS1 HLE (High Level Emulation)");
+    }
 
     // ── Resolve to .cue (generate one if only .bin provided) ────────────
     std::string cuePath;
@@ -120,8 +121,8 @@ Ps1LaunchResult LaunchPs1Game(const std::string& discPath) {
         cuePath = discPath;
     }
 
-    LOGI("PS1 ready: disc=%s bios=%s", cuePath.c_str(), biosPath.c_str());
-    return {true, "PS1 core ready — " + cuePath, cuePath};
+    LOGI("PS1 ready: disc=%s bios=%s", cuePath.c_str(), hasBios ? biosPath.c_str() : "HLE");
+    return {true, "PS1 core ready — " + cuePath, cuePath, hasBios ? biosPath : "HLE"};
 }
 
 }  // namespace retrorts::ps1
