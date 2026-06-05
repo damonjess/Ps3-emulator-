@@ -438,9 +438,15 @@ private fun LauncherScreen(
             // Merge: add scanned games not already in saved list
             val allPaths = saved.map { it.filePath }.toSet()
             val merged = (saved + scanned.filter { it.filePath !in allPaths })
-                .distinctBy { it.filePath }
-            list.addAll(merged)
-            if (merged.size > saved.size) GameLibrary.save(context, merged)
+            val seenNames2 = mutableSetOf<String>()
+            val deduped = merged.filter { entry ->
+                val key = File(entry.filePath)
+                    .nameWithoutExtension.lowercase()
+                    .replace(" ","_").replace("(","").replace(")","")
+                seenNames2.add(key)
+            }
+            list.addAll(deduped)
+            if (deduped.size != saved.size) GameLibrary.save(context, deduped)
         }
     }
 
@@ -530,6 +536,7 @@ private fun LibraryTab(
     onLaunch: (GameEntry) -> Unit
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     Column(
         Modifier
             .fillMaxSize()
@@ -553,17 +560,18 @@ private fun LibraryTab(
             )
             Button(
                 onClick = {
-                    val scanned = GameLibrary.scanGamesFolder(context)
-                    val allPaths = games.map { it.filePath }.toSet()
-                    val newGames = scanned.filter { it.filePath !in allPaths }
-                    if (newGames.isNotEmpty()) {
-                        games.addAll(newGames)
-                        GameLibrary.save(context, games)
+                    scope.launch(Dispatchers.IO) {
+                        val fresh = GameLibrary.clearAndRescan(context)
+                        withContext(Dispatchers.Main) {
+                            games.clear()
+                            games.addAll(fresh)
+                            GameLibrary.save(context, fresh)
+                        }
                     }
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3A6A3A)),
                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
-            ) { Text("Scan") }
+            ) { Text("Rescan") }
             Button(
                 onClick = { folderPicker.launch(null) },
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3A3A6A)),

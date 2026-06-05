@@ -52,6 +52,7 @@ object GameLibrary {
                          }
                      }
                      save(context, list)
+                     legacy.delete() // Cleanup legacy file after migration
                      list
                  } else emptyList()
              }.getOrDefault(emptyList())
@@ -61,8 +62,7 @@ object GameLibrary {
     fun scanGamesFolder(context: Context): List<GameEntry> {
         val roots = mutableListOf(
             File(context.getExternalFilesDir(null), "Imported"),
-            File(android.os.Environment.getExternalStorageDirectory(), "RetroRTS/Games"),
-            File(android.os.Environment.getExternalStorageDirectory(), "Download")
+            File(android.os.Environment.getExternalStorageDirectory(), "RetroRTS/Games")
         )
         
         val validExts = setOf("bin","cue","img","iso","exe","com","bat","adf","hdf","nds","dsi")
@@ -98,11 +98,28 @@ object GameLibrary {
             .map { it.name.substringBeforeLast('.').lowercase() }
             .toSet()
 
-        return found.filter { entry ->
+        val filtered = found.filter { entry ->
             val isFolder = !entry.filePath.contains('.')
             if (isFolder) {
                 entry.name.lowercase() !in binNames
             } else true
         }
+
+        // Deduplicate: same base filename = same game, keep first found
+        val seenNames = mutableSetOf<String>()
+        return filtered.filter { entry ->
+            val baseName = File(entry.filePath)
+                .nameWithoutExtension
+                .lowercase()
+                .replace(" ", "_")
+                .replace("(", "").replace(")", "")
+                .replace("[", "").replace("]", "")
+            seenNames.add(baseName)   // returns false if already present
+        }
+    }
+
+    fun clearAndRescan(context: Context): List<GameEntry> {
+        libraryFile(context).delete()
+        return scanGamesFolder(context)
     }
 }

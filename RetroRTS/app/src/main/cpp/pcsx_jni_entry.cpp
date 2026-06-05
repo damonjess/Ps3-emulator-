@@ -119,7 +119,16 @@ extern "C" int PCSX_Run(const char* biosPath, const char* discPath, const char* 
     }
 
     // Set up paths from provided saveDir
-    strncpy(Config.BiosDir, biosPath, MAXPATHLEN - 1);
+    // BiosDir must be the FOLDER containing the bios, not the file itself
+    std::string biosDir(biosPath);
+    auto lastSlash = biosDir.rfind('/');
+    if (lastSlash != std::string::npos)
+        biosDir = biosDir.substr(0, lastSlash + 1);  // keep trailing /
+    strncpy(Config.BiosDir, biosDir.c_str(), MAXPATHLEN - 1);
+
+    // BiosDir must also end with '/'
+    if (Config.BiosDir[strlen(Config.BiosDir)-1] != '/')
+        strncat(Config.BiosDir, "/", MAXPATHLEN - 1);
     char mcd1[MAXPATHLEN], mcd2[MAXPATHLEN];
     snprintf(mcd1, MAXPATHLEN, "%s/mcd1.mcr", saveDir);
     snprintf(mcd2, MAXPATHLEN, "%s/mcd2.mcr", saveDir);
