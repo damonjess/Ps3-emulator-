@@ -1,11 +1,12 @@
 #include <jni.h>
 #include <android/log.h>
-#include <sys/param.h>
 #include <string>
 #include <cstring>
 #include <cstdio>
 #include <cstdarg>
 #include <thread>
+#include <atomic>
+#include <mutex>
 #include "gpu_android.h"
 
 #define LOG_TAG "PCSX"
@@ -55,11 +56,27 @@ extern "C" {
     void SysRunGui() {}
     void SysClose() {}
 
+    static std::atomic<uint16_t> g_pad_state[2]{0, 0};
+
     void padReset() {}
     int  padFreeze(void *f, int mode) { return 0; }
     int  padToggleAnalog(unsigned int index) { return 0; }
-    unsigned char PAD1_poll(unsigned char c, int *p) { return 0; }
-    unsigned char PAD2_poll(unsigned char c, int *p) { return 0; }
+
+    unsigned char PAD1_poll(unsigned char c, int *p) {
+        // Simple digital pad polling: return low byte or high byte of mask depending on phase
+        uint16_t mask = ~g_pad_state[0].load(); // PS1 uses active-low
+        if (c == 0x42) return (mask & 0xFF);
+        if (c == 0x43) return (mask >> 8);
+        return 0xFF;
+    }
+
+    unsigned char PAD2_poll(unsigned char c, int *p) {
+        uint16_t mask = ~g_pad_state[1].load();
+        if (c == 0x42) return (mask & 0xFF);
+        if (c == 0x43) return (mask >> 8);
+        return 0xFF;
+    }
+
     unsigned char PAD1_startPoll(void) { return 0; }
     unsigned char PAD2_startPoll(void) { return 0; }
 
@@ -72,23 +89,43 @@ extern "C" {
     uint16_t* psxVuw = nullptr;
 }
 
-extern "C" int PCSX_Run(const char* biosPath, const char* discPath) {
-    if (!biosPath || !discPath) {
+static std::atomic<bool> g_emu_running{false};
+static std::mutex g_emu_mutex;
+
+extern "C" int PCSX_Run(const char* biosPath, const char* discPath, const char* saveDir) {
+    std::lock_guard<std::mutex> lock(g_emu_mutex);
+    if (g_emu_running.load()) {
+        LOGE("PCSX_Run: already running");
+        return -100;
+    }
+
+    if (!biosPath || !discPath || !saveDir) {
         LOGE("PCSX_Run: null path");
         return -1;
     }
-    LOGI("PCSX_Run bios=%s disc=%s", biosPath, discPath);
+    LOGI("PCSX_Run bios=%s disc=%s saves=%s", biosPath, discPath, saveDir);
 
     if (!psxVuw) {
         psxVuw = (uint16_t*)malloc(1024 * 512 * 2);
     }
 
     memset(&Config, 0, sizeof(Config));
-    // Config.Bios is char[3][64], so we fill the first slot.
-    strncpy(Config.Bios[0], biosPath, 63);
-    strncpy(Config.BiosDir, "/sdcard/RetroRTS/system/ps1/",   MAXPATHLEN - 1);
-    strncpy(Config.Mcd1,    "/sdcard/RetroRTS/saves/mcd1.mcr", MAXPATHLEN - 1);
-    strncpy(Config.Mcd2,    "/sdcard/RetroRTS/saves/mcd2.mcr", MAXPATHLEN - 1);
+    if (std::string(biosPath) == "HLE") {
+        Config.HLE = TRUE;
+        LOGI("PCSX_Run: Using HLE BIOS fallback");
+    } else {
+        strncpy(Config.Bios[0], biosPath, 63);
+        Config.HLE = FALSE;
+    }
+
+    // Set up paths from provided saveDir
+    strncpy(Config.BiosDir, biosPath, MAXPATHLEN - 1);
+    char mcd1[MAXPATHLEN], mcd2[MAXPATHLEN];
+    snprintf(mcd1, MAXPATHLEN, "%s/mcd1.mcr", saveDir);
+    snprintf(mcd2, MAXPATHLEN, "%s/mcd2.mcr", saveDir);
+    strncpy(Config.Mcd1, mcd1, MAXPATHLEN - 1);
+    strncpy(Config.Mcd2, mcd2, MAXPATHLEN - 1);
+
     Config.Cpu = CPU_INTERPRETER;
 
     // Correct PCSX-ReARMed plugin function names (using the pointers in plugins.h)
@@ -126,14 +163,40 @@ extern "C" int PCSX_Run(const char* biosPath, const char* discPath) {
     }
 
     psxReset();
-    LOGI("PCSX executing on emulator thread");
+    g_emu_running.store(true);
+    psxRegs.stop = 0;
+    LOGI("PCSX starting emulator thread");
 
     // Run on a dedicated thread so we never block the JNI caller
     std::thread emuThread([]() {
         psxExecute();
-        LOGI("PCSX execution ended");
+        LOGI("PCSX execution ended, cleaning up...");
+
+        EmuShutdown();
+        GPU_shutdown();
+        SPU_shutdown();
+
+        if (psxVuw) {
+            free(psxVuw);
+            psxVuw = nullptr;
+        }
+
+        g_emu_running.store(false);
     });
     emuThread.detach();
 
     return 0;   // return immediately — emu runs in background
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_retrorts_ui_NativeEmulatorBridge_stopGameNative(JNIEnv*, jobject) {
+    LOGI("PCSX stopGameNative requested");
+    psxRegs.stop = 1;
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_retrorts_ui_NativeEmulatorBridge_updateInputNative(JNIEnv*, jobject, jint padIndex, jint buttonMask) {
+    if (padIndex >= 0 && padIndex < 2) {
+        g_pad_state[padIndex].store((uint16_t)buttonMask);
+    }
 }

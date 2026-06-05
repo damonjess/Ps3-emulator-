@@ -10,12 +10,14 @@
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
 
 // Direct call — PCSX_Run is statically linked, no dlopen needed
-extern "C" int PCSX_Run(const char* bios, const char* disc);
+extern "C" int PCSX_Run(const char* bios, const char* disc, const char* saveDir);
 
 namespace retrorts {
 
 std::string LaunchGame(const std::string& console,
-                       const std::string& romPath) {
+                       const std::string& romPath,
+                       const std::string& cacheDir,
+                       const std::string& saveDir) {
     const std::string c = [&]{
         std::string s = console;
         std::transform(s.begin(), s.end(), s.begin(), ::toupper);
@@ -23,11 +25,9 @@ std::string LaunchGame(const std::string& console,
     }();
 
     if (c == "PS1") {
-        auto result = retrorts::ps1::LaunchPs1Game(romPath);
+        auto result = retrorts::ps1::LaunchPs1Game(romPath, cacheDir);
         if (!result.ok) return "ERROR: " + result.message;
-        const std::string bios =
-            "/sdcard/RetroRTS/system/ps1/scph1001.bin";
-        int r = PCSX_Run(bios.c_str(), result.resolvedCuePath.c_str());
+        int r = PCSX_Run(result.resolvedBiosPath.c_str(), result.resolvedCuePath.c_str(), saveDir.c_str());
         if (r != 0) return "ERROR: PS1 error code " + std::to_string(r);
         return "OK: " + result.message;
 
@@ -53,11 +53,9 @@ std::string LaunchGame(const std::string& console,
         if (lower.ends_with(".bin") || lower.ends_with(".cue") ||
             lower.ends_with(".img") || lower.ends_with(".iso")) {
             // Re-route to PS1
-            auto result = retrorts::ps1::LaunchPs1Game(romPath);
+            auto result = retrorts::ps1::LaunchPs1Game(romPath, cacheDir);
             if (!result.ok) return "ERROR: " + result.message;
-            const std::string bios =
-                "/sdcard/RetroRTS/system/ps1/scph1001.bin";
-            int r = PCSX_Run(bios.c_str(), result.resolvedCuePath.c_str());
+            int r = PCSX_Run(result.resolvedBiosPath.c_str(), result.resolvedCuePath.c_str(), saveDir.c_str());
             return r == 0 ? "OK: PS1 auto-detected"
                           : "ERROR: PS1 error " + std::to_string(r);
         }

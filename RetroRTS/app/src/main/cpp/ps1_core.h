@@ -10,6 +10,6 @@ struct Ps1LaunchResult {
     std::string resolvedBiosPath;  // path to bios or "HLE"
 };
 
-Ps1LaunchResult LaunchPs1Game(const std::string& discPath);
+Ps1LaunchResult LaunchPs1Game(const std::string& discPath, const std::string& cacheDir);
 
 }  // namespace retrorts::ps1

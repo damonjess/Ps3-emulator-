@@ -1,20 +1,19 @@
 package com.retrorts
 
+import android.content.Context
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 
 object GameLibrary {
 
-    private fun libraryFile(): File {
-        val dir = File(
-            android.os.Environment.getExternalStorageDirectory(),
-            "RetroRTS"
-        ).also { it.mkdirs() }
+    private fun libraryFile(context: Context): File {
+        val dir = File(context.getExternalFilesDir(null), "Config")
+            .also { it.mkdirs() }
         return File(dir, "library.json")
     }
 
-    fun save(games: List<GameEntry>) {
+    fun save(context: Context, games: List<GameEntry>) {
         runCatching {
             val arr = JSONArray()
             games.forEach { g ->
@@ -24,13 +23,13 @@ object GameLibrary {
                     put("gameId",   g.gameId)
                 })
             }
-            libraryFile().writeText(arr.toString())
+            libraryFile(context).writeText(arr.toString())
         }
     }
 
-    fun load(): List<GameEntry> {
+    fun load(context: Context): List<GameEntry> {
         return runCatching {
-            val text = libraryFile().readText()
+            val text = libraryFile(context).readText()
             val arr  = JSONArray(text)
             (0 until arr.length()).map { i ->
                 val o = arr.getJSONObject(i)
@@ -41,11 +40,27 @@ object GameLibrary {
                         .lowercase().replace(" ", "_"))
                 )
             }
-        }.getOrDefault(emptyList())
+        }.getOrElse {
+             // Migration check: try reading from legacy location
+             runCatching {
+                 val legacy = File(android.os.Environment.getExternalStorageDirectory(), "RetroRTS/library.json")
+                 if (legacy.exists()) {
+                     val list = JSONArray(legacy.readText()).let { a ->
+                         (0 until a.length()).map { i ->
+                             val o = a.getJSONObject(i)
+                             GameEntry(o.getString("name"), o.getString("filePath"))
+                         }
+                     }
+                     save(context, list)
+                     list
+                 } else emptyList()
+             }.getOrDefault(emptyList())
+        }
     }
 
-    fun scanGamesFolder(): List<GameEntry> {
-        val roots = listOf(
+    fun scanGamesFolder(context: Context): List<GameEntry> {
+        val roots = mutableListOf(
+            File(context.getExternalFilesDir(null), "Imported"),
             File(android.os.Environment.getExternalStorageDirectory(), "RetroRTS/Games"),
             File(android.os.Environment.getExternalStorageDirectory(), "Download")
         )
@@ -58,7 +73,6 @@ object GameLibrary {
             root.walkTopDown().maxDepth(3).forEach { file ->
                 val ext = file.extension.lowercase()
                 if (file.isFile && ext in validExts) {
-                    // Skip small files that likely aren't games (except for tiny DOS/Amiga files)
                     if (file.length() < 1024 && ext !in setOf("bat", "com", "cue")) return@forEach
 
                     found.add(GameEntry(
@@ -79,7 +93,6 @@ object GameLibrary {
             }
         }
 
-        // Remove folder entries that have a matching .bin already found
         val binNames = found
             .filter { it.filePath.endsWith(".bin", ignoreCase = true) }
             .map { it.name.substringBeforeLast('.').lowercase() }

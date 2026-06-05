@@ -231,6 +231,7 @@ private suspend fun launchGameWithNativeBackend(
         return@withContext LaunchResult(false, "Native library not loaded. Check NDK build.")
     }
     val result = NativeEmulatorBridge.launchGame(
+        context  = context,
         console  = game.consoleType.name,   // "PS1", "DOSBOX", etc.
         romPath  = game.filePath,
         settings = settings
@@ -387,7 +388,7 @@ fun resolveToRealPath(context: Context, uri: Uri): String? {
     // If it's already a file path, return as-is
     if (uri.scheme == "file") return uri.path
 
-    // content:// URI — copy to app cache so native code can read it
+    // content:// URI — copy to app-specific external storage so native code can read it
     return try {
         val fileName = context.contentResolver
             .query(uri, null, null, null, null)
@@ -397,10 +398,9 @@ fun resolveToRealPath(context: Context, uri: Uri): String? {
                 if (idx >= 0) cursor.getString(idx) else null
             } ?: uri.lastPathSegment?.substringAfterLast('/') ?: "game.bin"
 
-        val destDir = java.io.File(
-            android.os.Environment.getExternalStorageDirectory(),
-            "RetroRTS/Games/PS1"
-        ).also { it.mkdirs() }
+        // Use getExternalFilesDir to avoid direct /sdcard access which is deprecated/restricted
+        val destDir = java.io.File(context.getExternalFilesDir(null), "Imported/PS1")
+            .also { it.mkdirs() }
 
         val destFile = java.io.File(destDir, fileName)
 
@@ -433,19 +433,19 @@ private fun LauncherScreen(
     var activeTab by remember { mutableStateOf(HomeTab.LIBRARY) }
     val games = remember {
         mutableStateListOf<GameEntry>().also { list ->
-            val saved   = GameLibrary.load()
-            val scanned = GameLibrary.scanGamesFolder()
+            val saved   = GameLibrary.load(context)
+            val scanned = GameLibrary.scanGamesFolder(context)
             // Merge: add scanned games not already in saved list
             val allPaths = saved.map { it.filePath }.toSet()
             val merged = (saved + scanned.filter { it.filePath !in allPaths })
                 .distinctBy { it.filePath }
             list.addAll(merged)
-            if (merged.size > saved.size) GameLibrary.save(merged)
+            if (merged.size > saved.size) GameLibrary.save(context, merged)
         }
     }
 
     LaunchedEffect(games.size) {
-        GameLibrary.save(games)
+        GameLibrary.save(context, games)
     }
 
     val folderPicker = rememberLauncherForActivityResult(
@@ -459,7 +459,7 @@ private fun LauncherScreen(
                     .substringBefore('?')
                     .ifBlank { "Game ${games.size + 1}" }
                 games.add(GameEntry(name, path))
-                GameLibrary.save(games)
+                GameLibrary.save(context, games)
             }
         }
     }
@@ -474,7 +474,7 @@ private fun LauncherScreen(
                 val name = realPath.substringAfterLast('/')
                 withContext(Dispatchers.Main) {
                     games.add(GameEntry(name, realPath))
-                    GameLibrary.save(games)
+                    GameLibrary.save(context, games)
                 }
             }
         }
@@ -529,6 +529,7 @@ private fun LibraryTab(
     filePicker: androidx.activity.result.ActivityResultLauncher<Array<String>>,
     onLaunch: (GameEntry) -> Unit
 ) {
+    val context = LocalContext.current
     Column(
         Modifier
             .fillMaxSize()
@@ -552,12 +553,12 @@ private fun LibraryTab(
             )
             Button(
                 onClick = {
-                    val scanned = GameLibrary.scanGamesFolder()
+                    val scanned = GameLibrary.scanGamesFolder(context)
                     val allPaths = games.map { it.filePath }.toSet()
                     val newGames = scanned.filter { it.filePath !in allPaths }
                     if (newGames.isNotEmpty()) {
                         games.addAll(newGames)
-                        GameLibrary.save(games)
+                        GameLibrary.save(context, games)
                     }
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3A6A3A)),

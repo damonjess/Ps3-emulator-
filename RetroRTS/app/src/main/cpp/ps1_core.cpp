@@ -37,30 +37,46 @@ std::string ext(const std::string& path) {
     return pos == std::string::npos ? "" : toLower(path.substr(pos));
 }
 
-// Generate a minimal .cue for a single-track .bin
-std::string generateCue(const std::string& binPath) {
-    // cue sits next to the bin, same name but .cue extension
-    auto pos = binPath.rfind('.');
-    if (pos == std::string::npos) return "";
-    std::string cuePath = binPath.substr(0, pos) + ".cue";
-    if (fileExists(cuePath)) return cuePath;   // already exists
-
-    // Extract just the filename for the FILE line
+// Generate a minimal .cue for a single-track .bin in a writable cache directory
+std::string generateCue(const std::string& binPath, const std::string& cacheDir) {
+    // Extract filename from path
     std::string filename = binPath.substr(binPath.rfind('/') + 1);
+
+    // Create a unique name for the cue in cache to avoid name collisions
+    std::string cueName = filename;
+    auto dot = cueName.rfind('.');
+    if (dot != std::string::npos) cueName = cueName.substr(0, dot);
+    cueName += ".cue";
+
+    std::string cuePath = cacheDir + "/" + cueName;
+
+    // Check if it already exists and points to the same bin
+    std::ifstream existing(cuePath);
+    if (existing.good()) {
+        std::string line;
+        while (std::getline(existing, line)) {
+            if (line.find(filename) != std::string::npos) return cuePath;
+        }
+    }
+    existing.close();
 
     std::ofstream cue(cuePath);
     if (!cue.good()) return "";
-    cue << "FILE \"" << filename << "\" BINARY\n"
+
+    // Important: PCSX-ReARMed needs the path to the bin if the cue isn't in the same folder.
+    // However, the standard .cue format 'FILE "name.bin" BINARY' expects it in the same folder.
+    // If we put the .cue in cache and .bin is in Games, we should use the absolute path in the .cue.
+    cue << "FILE \"" << binPath << "\" BINARY\n"
         << "  TRACK 01 MODE2/2352\n"
         << "    INDEX 01 00:00:00\n";
     cue.close();
-    LOGI("Generated cue: %s", cuePath.c_str());
+    LOGI("Generated cue in cache: %s", cuePath.c_str());
     return cuePath;
 }
 
 }  // namespace
 
-Ps1LaunchResult LaunchPs1Game(const std::string& discPath) {
+Ps1LaunchResult LaunchPs1Game(const std::string& discPath, const std::string& cacheDir) {
     if (discPath.empty())
         return {false, "PS1 launch failed: empty disc path", ""};
 
@@ -98,22 +114,26 @@ Ps1LaunchResult LaunchPs1Game(const std::string& discPath) {
         std::ifstream cueFile(discPath);
         std::string line;
         while (std::getline(cueFile, line)) {
-            if (toLower(line).find("file") != std::string::npos &&
-                toLower(line).find(".bin") != std::string::npos) {
-                // Extract filename from:  FILE "name.bin" BINARY
+            if (toLower(line).find("file") != std::string::npos) {
+                // Extract filename/path from:  FILE "name.bin" BINARY
                 auto q1 = line.find('"');
                 auto q2 = line.rfind('"');
                 if (q1 != std::string::npos && q2 > q1) {
-                    std::string binName = line.substr(q1 + 1, q2 - q1 - 1);
-                    std::string dir     = discPath.substr(0, discPath.rfind('/') + 1);
-                    if (!fileExists(dir + binName))
-                        return {false,
-                                "PS1 launch failed: .cue references missing file: " + binName, ""};
+                    std::string binRef = line.substr(q1 + 1, q2 - q1 - 1);
+                    // Check if it's a relative ref or absolute
+                    if (binRef.find('/') == std::string::npos) {
+                        std::string dir = discPath.substr(0, discPath.rfind('/') + 1);
+                        if (!fileExists(dir + binRef))
+                            return {false, "PS1 launch failed: .cue references missing file: " + binRef, ""};
+                    } else {
+                         if (!fileExists(binRef))
+                            return {false, "PS1 launch failed: .cue references missing file: " + binRef, ""};
+                    }
                 }
             }
         }
     } else if (e == ".bin" || e == ".img") {
-        cuePath = generateCue(discPath);
+        cuePath = generateCue(discPath, cacheDir);
         if (cuePath.empty())
             return {false, "PS1 launch failed: could not create .cue for " + discPath, ""};
     } else {
