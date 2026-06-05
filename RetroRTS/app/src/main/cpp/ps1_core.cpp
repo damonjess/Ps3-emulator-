@@ -37,20 +37,54 @@ std::string ext(const std::string& path) {
     return pos == std::string::npos ? "" : toLower(path.substr(pos));
 }
 
-// Generate a minimal .cue for a single-track .bin in a writable cache directory
-std::string generateCue(const std::string& binPath, const std::string& cacheDir) {
-    // Extract filename from path
+static bool isLikelyMultiTrack(const std::string& binPath) {
+    // Games known to be multi-track (data + audio CD tracks)
+    // For these, auto-generated single-track cue will crash PCSX
+    std::string lower = binPath;
+    std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+    const char* multiTrackGames[] = {
+        "gta", "grand theft", "wipeout", "wipe out",
+        "tekken", "ridge racer", "destruction derby",
+        "crash bandicoot", "spyro", "medievil",
+        "final fantasy", "metal gear", "castlevania",
+        nullptr
+    };
+    for (int i = 0; multiTrackGames[i]; i++) {
+        if (lower.find(multiTrackGames[i]) != std::string::npos)
+            return true;
+    }
+    // Also detect by file size — single-track PS1 games are
+    // typically under 650MB. Multi-track are often larger.
+    std::ifstream f(binPath, std::ios::ate | std::ios::binary);
+    if (f.good() && f.tellg() > 650LL * 1024 * 1024)
+        return true;
+    return false;
+}
+
+static std::string generateCue(const std::string& binPath,
+                                const std::string& cacheDir) {
     std::string filename = binPath.substr(binPath.rfind('/') + 1);
 
-    // Create a unique name for the cue in cache to avoid name collisions
-    std::string cueName = filename;
-    auto dot = cueName.rfind('.');
-    if (dot != std::string::npos) cueName = cueName.substr(0, dot);
-    cueName += ".cue";
+    // First check: does a .cue already exist next to the .bin?
+    std::string sideBySideCue =
+        binPath.substr(0, binPath.rfind('.')) + ".cue";
+    if (fileExists(sideBySideCue)) {
+        LOGI("Using existing cue: %s", sideBySideCue.c_str());
+        return sideBySideCue;
+    }
 
+    // Second check: is this likely a multi-track game?
+    // If so, refuse to auto-generate — user must supply real .cue
+    if (isLikelyMultiTrack(binPath)) {
+        LOGE("Multi-track game detected: %s — cannot auto-generate cue",
+             filename.c_str());
+        return "";  // caller will return error to UI
+    }
+
+    // Safe to auto-generate for simple single-track homebrew/demos
+    std::string cueName = filename.substr(0, filename.rfind('.')) + ".cue";
     std::string cuePath = cacheDir + "/" + cueName;
 
-    // Check if it already exists and points to the same bin
     std::ifstream existing(cuePath);
     if (existing.good()) {
         std::string line;
@@ -63,14 +97,11 @@ std::string generateCue(const std::string& binPath, const std::string& cacheDir)
     std::ofstream cue(cuePath);
     if (!cue.good()) return "";
 
-    // Important: PCSX-ReARMed needs the path to the bin if the cue isn't in the same folder.
-    // However, the standard .cue format 'FILE "name.bin" BINARY' expects it in the same folder.
-    // If we put the .cue in cache and .bin is in Games, we should use the absolute path in the .cue.
     cue << "FILE \"" << binPath << "\" BINARY\n"
         << "  TRACK 01 MODE2/2352\n"
         << "    INDEX 01 00:00:00\n";
     cue.close();
-    LOGI("Generated cue in cache: %s", cuePath.c_str());
+    LOGI("Generated single-track cue: %s", cuePath.c_str());
     return cuePath;
 }
 
@@ -135,7 +166,13 @@ Ps1LaunchResult LaunchPs1Game(const std::string& discPath, const std::string& ca
     } else if (e == ".bin" || e == ".img") {
         cuePath = generateCue(discPath, cacheDir);
         if (cuePath.empty())
-            return {false, "PS1 launch failed: could not create .cue for " + discPath, ""};
+            return {false,
+                "GTA2 and other multi-track PS1 games need a real "
+                ".cue file alongside the .bin.\n\n"
+                "On your PC, right-click the game in ImgBurn or "
+                "use CDRDAO to extract a proper .cue, then copy "
+                "BOTH files to /sdcard/RetroRTS/Games/PS1/",
+                "", ""};
     } else {
         // .iso — pass directly, PCSX-ReARMed accepts ISO
         cuePath = discPath;

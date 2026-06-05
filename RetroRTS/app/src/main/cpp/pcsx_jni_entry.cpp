@@ -85,18 +85,19 @@ extern "C" {
 
     void ndrc_freeze(void* f, int mode) {}
     void* ndrc_g = nullptr;
-
-    uint16_t* psxVuw = nullptr;
 }
 
+// psxVuw is owned and allocated by psxmem.c inside EmuInit().
+// We only need to forward-declare it so gpu_android can read it.
+extern "C" uint16_t* psxVuw;
+
 static std::atomic<bool> g_emu_running{false};
-static std::mutex g_emu_mutex;
 
 extern "C" int PCSX_Run(const char* biosPath, const char* discPath, const char* saveDir) {
-    std::lock_guard<std::mutex> lock(g_emu_mutex);
-    if (g_emu_running.load()) {
-        LOGE("PCSX_Run: already running");
-        return -100;
+    bool expected = false;
+    if (!g_emu_running.compare_exchange_strong(expected, true)) {
+        LOGI("PCSX_Run: already running");
+        return 0;
     }
 
     if (!biosPath || !discPath || !saveDir) {
@@ -105,9 +106,6 @@ extern "C" int PCSX_Run(const char* biosPath, const char* discPath, const char* 
     }
     LOGI("PCSX_Run bios=%s disc=%s saves=%s", biosPath, discPath, saveDir);
 
-    if (!psxVuw) {
-        psxVuw = (uint16_t*)malloc(1024 * 512 * 2);
-    }
 
     memset(&Config, 0, sizeof(Config));
     if (std::string(biosPath) == "HLE") {
@@ -118,17 +116,12 @@ extern "C" int PCSX_Run(const char* biosPath, const char* discPath, const char* 
         Config.HLE = FALSE;
     }
 
-    // Set up paths from provided saveDir
-    // BiosDir must be the FOLDER containing the bios, not the file itself
+    // BiosDir must be the FOLDER, not the file itself
     std::string biosDir(biosPath);
-    auto lastSlash = biosDir.rfind('/');
-    if (lastSlash != std::string::npos)
-        biosDir = biosDir.substr(0, lastSlash + 1);  // keep trailing /
+    auto slash = biosDir.rfind('/');
+    if (slash != std::string::npos)
+        biosDir = biosDir.substr(0, slash + 1);
     strncpy(Config.BiosDir, biosDir.c_str(), MAXPATHLEN - 1);
-
-    // BiosDir must also end with '/'
-    if (Config.BiosDir[strlen(Config.BiosDir)-1] != '/')
-        strncat(Config.BiosDir, "/", MAXPATHLEN - 1);
     char mcd1[MAXPATHLEN], mcd2[MAXPATHLEN];
     snprintf(mcd1, MAXPATHLEN, "%s/mcd1.mcr", saveDir);
     snprintf(mcd2, MAXPATHLEN, "%s/mcd2.mcr", saveDir);
@@ -172,7 +165,6 @@ extern "C" int PCSX_Run(const char* biosPath, const char* discPath, const char* 
     }
 
     psxReset();
-    g_emu_running.store(true);
     psxRegs.stop = 0;
     LOGI("PCSX starting emulator thread");
 
@@ -184,11 +176,6 @@ extern "C" int PCSX_Run(const char* biosPath, const char* discPath, const char* 
         EmuShutdown();
         GPU_shutdown();
         SPU_shutdown();
-
-        if (psxVuw) {
-            free(psxVuw);
-            psxVuw = nullptr;
-        }
 
         g_emu_running.store(false);
     });

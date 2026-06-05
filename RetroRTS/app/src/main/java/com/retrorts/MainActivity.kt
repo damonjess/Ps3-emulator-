@@ -182,6 +182,22 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             }
+
+            // Extract DSi BIOS
+            val dsiRoot = File(Environment.getExternalStorageDirectory(), "RetroRTS/system/dsi")
+            if (!dsiRoot.exists()) dsiRoot.mkdirs()
+
+            val dsiFiles = listOf("bios7.bin", "bios9.bin", "firmware.bin", "key.cfg")
+            dsiFiles.forEach { fileName ->
+                val dest = File(dsiRoot, fileName)
+                if (!dest.exists()) {
+                    runCatching {
+                        assets.open("system/dsi/$fileName").use { input ->
+                            dest.outputStream().use { output -> input.copyTo(output) }
+                        }
+                    }
+                }
+            }
         }
     }
     private fun requestAudioFocus() { val am=getSystemService(AUDIO_SERVICE) as AudioManager; val req=AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN).setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_GAME).setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build()).setOnAudioFocusChangeListener { if (it<=0) DosboxBridge.stopDosbox() }.build(); audioFocusRequest=req; am.requestAudioFocus(req)}

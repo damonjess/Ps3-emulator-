@@ -5,14 +5,7 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-include(FetchContent)
-FetchContent_Declare(
-    pcsx_rearmed
-    GIT_REPOSITORY https://github.com/notaz/pcsx_rearmed.git
-    GIT_TAG        master
-    GIT_SHALLOW    TRUE
-)
-FetchContent_MakeAvailable(pcsx_rearmed)
+set(pcsx_rearmed_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/pcsx_rearmed)
 
 # Build PCSX core as a STATIC library
 add_library(pcsx_core STATIC
