@@ -474,14 +474,15 @@ private fun LauncherScreen(
         ActivityResultContracts.OpenDocumentTree()
     ) { uri: Uri? ->
         uri?.let {
-            val path = it.toString()
-            if (GamePathValidator.isValid(path)) {
-                val name = path.substringAfterLast('%')
-                    .substringAfterLast('/')
-                    .substringBefore('?')
-                    .ifBlank { "Game ${games.size + 1}" }
-                games.add(GameEntry(name, path))
-                GameLibrary.save(context, games)
+            scope.launch(Dispatchers.IO) {
+                val realPath = resolveToRealPath(context, it)
+                if (realPath != null && GamePathValidator.isValid(realPath)) {
+                    val name = realPath.substringAfterLast('/')
+                    withContext(Dispatchers.Main) {
+                        games.add(GameEntry(name, realPath))
+                        GameLibrary.save(context, games)
+                    }
+                }
             }
         }
     }

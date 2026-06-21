@@ -23,7 +23,6 @@ android {
                     "-std=c++20", 
                     "-O3", 
                     "-flto",
-                    "-march=armv9-a+sve2",
                     "-ffp-contract=fast"
                 )
                 arguments += listOf(

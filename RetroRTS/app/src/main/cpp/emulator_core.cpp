@@ -31,6 +31,10 @@ std::string LaunchGame(const std::string& console,
         if (r != 0) return "ERROR: PS1 error code " + std::to_string(r);
         return "OK: " + result.message;
 
+    } else if (c == "PS2") {
+        // PS2 core is not yet fully implemented in this prototype
+        return "ERROR: PS2 core implementation pending. Use PS1 for now.";
+
     } else if (c == "DOSBOX" || c == "DOS") {
         // DOSBox launch via DosboxBridge
         return "OK: DOSBox launching " + romPath;
@@ -52,6 +56,22 @@ std::string LaunchGame(const std::string& console,
         }();
         if (lower.ends_with(".bin") || lower.ends_with(".cue") ||
             lower.ends_with(".img") || lower.ends_with(".iso")) {
+            // Check for PS2 heuristic
+            bool isPs2 = false;
+            if (lower.ends_with(".iso")) {
+                FILE* f = fopen(romPath.c_str(), "rb");
+                if (f) {
+                    fseek(f, 0, SEEK_END);
+                    long size = ftell(f);
+                    fclose(f);
+                    if (size > 700 * 1024 * 1024) isPs2 = true;
+                }
+            }
+
+            if (isPs2) {
+                return "ERROR: PS2 core implementation pending. ISO detected as PS2.";
+            }
+
             // Re-route to PS1
             auto result = retrorts::ps1::LaunchPs1Game(romPath, cacheDir);
             if (!result.ok) return "ERROR: " + result.message;

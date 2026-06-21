@@ -8,32 +8,35 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(pcsx_rearmed_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/pcsx_rearmed)
 
 # Build PCSX core as a STATIC library
-add_library(pcsx_core STATIC
-    ${pcsx_rearmed_SOURCE_DIR}/libpcsxcore/psxbios.c
-    ${pcsx_rearmed_SOURCE_DIR}/libpcsxcore/psxcounters.c
-    ${pcsx_rearmed_SOURCE_DIR}/libpcsxcore/psxdma.c
-    ${pcsx_rearmed_SOURCE_DIR}/libpcsxcore/psxhw.c
-    ${pcsx_rearmed_SOURCE_DIR}/libpcsxcore/psxinterpreter.c
-    ${pcsx_rearmed_SOURCE_DIR}/libpcsxcore/psxmem.c
-    ${pcsx_rearmed_SOURCE_DIR}/libpcsxcore/r3000a.c
-    ${pcsx_rearmed_SOURCE_DIR}/libpcsxcore/cdrom.c
-    ${pcsx_rearmed_SOURCE_DIR}/libpcsxcore/cdriso.c
-    ${pcsx_rearmed_SOURCE_DIR}/libpcsxcore/cheat.c
-    ${pcsx_rearmed_SOURCE_DIR}/libpcsxcore/decode_xa.c
-    ${pcsx_rearmed_SOURCE_DIR}/libpcsxcore/mdec.c
-    ${pcsx_rearmed_SOURCE_DIR}/libpcsxcore/misc.c
-    ${pcsx_rearmed_SOURCE_DIR}/libpcsxcore/sio.c
-    ${pcsx_rearmed_SOURCE_DIR}/libpcsxcore/ppf.c
-    ${pcsx_rearmed_SOURCE_DIR}/libpcsxcore/psxcommon.c
-    ${pcsx_rearmed_SOURCE_DIR}/libpcsxcore/psxevents.c
-    ${pcsx_rearmed_SOURCE_DIR}/libpcsxcore/plugins.c
-    ${pcsx_rearmed_SOURCE_DIR}/libpcsxcore/database.c
-    ${pcsx_rearmed_SOURCE_DIR}/libpcsxcore/gpu.c
-    ${pcsx_rearmed_SOURCE_DIR}/libpcsxcore/gte.c
-    ${pcsx_rearmed_SOURCE_DIR}/libpcsxcore/spu.c
-    ${pcsx_rearmed_SOURCE_DIR}/libpcsxcore/cdrom-async.c
-    ${pcsx_rearmed_SOURCE_DIR}/libpcsxcore/gte_divider.c
-)
+# NOTE: Sources are currently missing from the repository.
+# To build the full emulator, place the pcsx_rearmed source tree in src/main/cpp/pcsx_rearmed
+# add_library(pcsx_core STATIC
+#    ${pcsx_rearmed_SOURCE_DIR}/libpcsxcore/psxbios.c
+#    ${pcsx_rearmed_SOURCE_DIR}/libpcsxcore/psxcounters.c
+#    ${pcsx_rearmed_SOURCE_DIR}/libpcsxcore/psxdma.c
+#    ${pcsx_rearmed_SOURCE_DIR}/libpcsxcore/psxhw.c
+#    ${pcsx_rearmed_SOURCE_DIR}/libpcsxcore/psxinterpreter.c
+#    ${pcsx_rearmed_SOURCE_DIR}/libpcsxcore/psxmem.c
+#    ${pcsx_rearmed_SOURCE_DIR}/libpcsxcore/r3000a.c
+#    ${pcsx_rearmed_SOURCE_DIR}/libpcsxcore/cdrom.c
+#    ${pcsx_rearmed_SOURCE_DIR}/libpcsxcore/cdriso.c
+#    ${pcsx_rearmed_SOURCE_DIR}/libpcsxcore/cheat.c
+#    ${pcsx_rearmed_SOURCE_DIR}/libpcsxcore/decode_xa.c
+#    ${pcsx_rearmed_SOURCE_DIR}/libpcsxcore/mdec.c
+#    ${pcsx_rearmed_SOURCE_DIR}/libpcsxcore/misc.c
+#    ${pcsx_rearmed_SOURCE_DIR}/libpcsxcore/sio.c
+#    ${pcsx_rearmed_SOURCE_DIR}/libpcsxcore/ppf.c
+#    ${pcsx_rearmed_SOURCE_DIR}/libpcsxcore/psxcommon.c
+#    ${pcsx_rearmed_SOURCE_DIR}/libpcsxcore/psxevents.c
+#    ${pcsx_rearmed_SOURCE_DIR}/libpcsxcore/plugins.c
+#    ${pcsx_rearmed_SOURCE_DIR}/libpcsxcore/database.c
+#    ${pcsx_rearmed_SOURCE_DIR}/libpcsxcore/gpu.c
+#    ${pcsx_rearmed_SOURCE_DIR}/libpcsxcore/gte.c
+#    ${pcsx_rearmed_SOURCE_DIR}/libpcsxcore/spu.c
+#    ${pcsx_rearmed_SOURCE_DIR}/libpcsxcore/cdrom-async.c
+#    ${pcsx_rearmed_SOURCE_DIR}/libpcsxcore/gte_divider.c
+# )
+add_library(pcsx_core STATIC pcsx_android_stubs.c)
 
 target_include_directories(pcsx_core PUBLIC
     ${pcsx_rearmed_SOURCE_DIR}
@@ -78,6 +81,9 @@ target_link_libraries(pcsx_rearmed
     ${android-lib}
     ${aaudio-lib}
 )
+
+# If pcsx_core is just stubs, ensure we don't fail on missing symbols if they aren't called yet
+set_target_properties(pcsx_rearmed PROPERTIES LINK_FLAGS "-Wl,--allow-shlib-undefined")
 
 target_include_directories(pcsx_rearmed PRIVATE
     ${pcsx_rearmed_SOURCE_DIR}

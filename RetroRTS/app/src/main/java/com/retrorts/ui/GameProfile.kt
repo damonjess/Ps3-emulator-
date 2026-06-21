@@ -138,6 +138,7 @@ enum class ConsoleType {
     AMIGA,
     NINTENDO_DSI,
     PS1,
+    PS2,
     UNKNOWN;
 
     companion object {
@@ -150,7 +151,11 @@ enum class ConsoleType {
                     -> AMIGA
                 n.endsWith(".bin") || n.endsWith(".cue") || n.endsWith(".img")
                     -> PS1
-                n.endsWith(".iso") -> PS1   // could be PS1 or PS2; default to PS1
+                n.endsWith(".iso") -> {
+                    // Heuristic: large ISOs are likely PS2
+                    val file = java.io.File(filePath)
+                    if (file.exists() && file.length() > 700 * 1024 * 1024) PS2 else PS1
+                }
                 else -> DOSBOX              // default for folders / .exe / .com
             }
         }
