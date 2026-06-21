@@ -246,6 +246,26 @@ private suspend fun launchGameWithNativeBackend(
     if (!DosboxBridge.isAvailable) {
         return@withContext LaunchResult(false, "Native library not loaded. Check NDK build.")
     }
+
+    if (game.consoleType == ConsoleType.DOSBOX) {
+        val profile = GameProfileStore.loadByGameName(game.name)
+        val configPath = writeDosboxConfig(context, profile, game)
+        if (configPath.isBlank()) {
+            return@withContext LaunchResult(false, "DOS launch failed: could not write DOSBox config.")
+        }
+
+        val started = DosboxBridge.startDosbox(game.filePath, configPath)
+        return@withContext if (started) {
+            LaunchResult(true, "OK: DOSBox started")
+        } else {
+            LaunchResult(
+                false,
+                "DOS launch failed: DOSBox-Pure native core is missing or could not start. " +
+                    "Add the DOSBox-Pure AAR/native library to RetroRTS/app/libs and rebuild."
+            )
+        }
+    }
+
     val result = NativeEmulatorBridge.launchGame(
         context  = context,
         console  = game.consoleType.name,   // "PS1", "DOSBOX", etc.

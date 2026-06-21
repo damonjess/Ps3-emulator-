@@ -19,6 +19,7 @@ std::atomic<int>   g_frame_cap{120};
 std::atomic<int>   g_thermal_level{0};
 std::atomic<float> g_fps{120.0f};
 std::atomic<float> g_cpu_pct{42.0f};
+void* g_dosbox_lib{nullptr};
 
 int effective_cycles() {
     int base = g_cpu_cycles.load();
@@ -40,7 +41,11 @@ if (!gameDir || !configPath) return JNI_FALSE;
 
 const char* dir  = env->GetStringUTFChars(gameDir,    nullptr);
 const char* conf = env->GetStringUTFChars(configPath, nullptr);
-if (!dir || !conf) { return JNI_FALSE; }
+if (!dir || !conf) {
+    if (dir) env->ReleaseStringUTFChars(gameDir, dir);
+    if (conf) env->ReleaseStringUTFChars(configPath, conf);
+    return JNI_FALSE;
+}
 
 LOGI("startDosbox dir=%s conf=%s", dir, conf);
 
@@ -51,23 +56,38 @@ if (d.find("Dune2000") != std::string::npos || d.find("dune") != std::string::np
 else if (d.find("RedAlert") != std::string::npos || d.find("cnc") != std::string::npos)
     g_cpu_cycles.store(30000);
 
+// DOSBox-Pure exposes dosbox_run(conf_path) via its .so loaded by the AAR.
+// Do not report success until the native core is present and accepts the launch.
+void* lib = dlopen("libdosbox_pure.so", RTLD_NOW);
+if (!lib) {
+    LOGE("libdosbox_pure.so not available: %s", dlerror());
+    env->ReleaseStringUTFChars(gameDir,    dir);
+    env->ReleaseStringUTFChars(configPath, conf);
+    return JNI_FALSE;
+}
+
+typedef int (*dosbox_run_t)(const char*);
+auto fn = reinterpret_cast<dosbox_run_t>(dlsym(lib, "dosbox_pure_run"));
+if (!fn) {
+    LOGE("dosbox_pure_run symbol not found in libdosbox_pure.so: %s", dlerror());
+    dlclose(lib);
+    env->ReleaseStringUTFChars(gameDir,    dir);
+    env->ReleaseStringUTFChars(configPath, conf);
+    return JNI_FALSE;
+}
+
+const int runResult = fn(conf);
+if (runResult != 0) {
+    LOGE("dosbox_pure_run failed with code %d", runResult);
+    dlclose(lib);
+    env->ReleaseStringUTFChars(gameDir,    dir);
+    env->ReleaseStringUTFChars(configPath, conf);
+    return JNI_FALSE;
+}
+
+g_dosbox_lib = lib;
 g_audio.start(48000, 2);
 g_running.store(true);
-
-// DOSBox-Pure exposes dosbox_run(conf_path) via its .so loaded by the AAR.
-// We call it via dlopen so it is optional at link time.
-void* lib = dlopen("libdosbox_pure.so", RTLD_NOW | RTLD_NOLOAD);
-if (lib) {
-    typedef int (*dosbox_run_t)(const char*);
-    auto fn = reinterpret_cast<dosbox_run_t>(dlsym(lib, "dosbox_pure_run"));
-    if (fn) {
-        fn(conf);
-    } else {
-        LOGE("dosbox_pure_run symbol not found in libdosbox_pure.so");
-    }
-} else {
-    LOGE("libdosbox_pure.so not loaded — AAR missing or not yet initialised");
-}
 
 env->ReleaseStringUTFChars(gameDir,    dir);
 env->ReleaseStringUTFChars(configPath, conf);
@@ -80,6 +100,10 @@ Java_com_retrorts_ui_DosboxBridge_stopDosboxNative(JNIEnv*, jobject) {
 if (!g_running.load()) return;
 g_audio.stop();
 g_running.store(false);
+if (g_dosbox_lib) {
+    dlclose(g_dosbox_lib);
+    g_dosbox_lib = nullptr;
+}
 }
 
 // ── audio PCM submit ──────────────────────────────────────────────────────

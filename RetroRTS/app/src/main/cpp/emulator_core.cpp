@@ -28,6 +28,10 @@ std::string LaunchGame(const std::string& console,
         auto result = retrorts::ps1::LaunchPs1Game(romPath, cacheDir);
         if (!result.ok) return "ERROR: " + result.message;
         int r = PCSX_Run(result.resolvedBiosPath.c_str(), result.resolvedCuePath.c_str(), saveDir.c_str());
+        if (r == -10) {
+            return "ERROR: PS1 core is not bundled in this build. "
+                   "Add the PCSX-ReARMed source tree under app/src/main/cpp/pcsx_rearmed and rebuild.";
+        }
         if (r != 0) return "ERROR: PS1 error code " + std::to_string(r);
         return "OK: " + result.message;
 
@@ -76,6 +80,10 @@ std::string LaunchGame(const std::string& console,
             auto result = retrorts::ps1::LaunchPs1Game(romPath, cacheDir);
             if (!result.ok) return "ERROR: " + result.message;
             int r = PCSX_Run(result.resolvedBiosPath.c_str(), result.resolvedCuePath.c_str(), saveDir.c_str());
+            if (r == -10) {
+                return "ERROR: PS1 core is not bundled in this build. "
+                       "Add the PCSX-ReARMed source tree under app/src/main/cpp/pcsx_rearmed and rebuild.";
+            }
             return r == 0 ? "OK: PS1 auto-detected"
                           : "ERROR: PS1 error " + std::to_string(r);
         }
