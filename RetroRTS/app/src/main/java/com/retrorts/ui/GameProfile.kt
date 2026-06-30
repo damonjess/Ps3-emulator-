@@ -57,6 +57,46 @@ data class GameProfile(
         if exist play.bat call play.bat
     """.trimIndent()
 
+    fun toAmigaConfig(gameDirectoryPath: String): String = """
+        [general]
+        fullscreen=false
+        width=640
+        height=512
+        amiga_model=A500
+        cpu_speed=fastest
+        cpu_type=68000
+        fpu_type=none
+        chipset=ocs
+        chipram=2
+        fastram=0
+        bogomem=0
+        z3fastram=0
+
+        [display]
+        framerate=50
+        vsync=true
+        linemode=scanlines
+        aspect=true
+
+        [sound]
+        sound=true
+        frequency=$mixerRate
+        channels=2
+        volume=100
+
+        [input]
+        joystick_type=automatic
+        mouse_speed=100
+
+        [cpu]
+        cpu_cycle_exact=false
+        cpu_compatible=true
+
+        [blitter]
+        blitter_cycle_exact=false
+        blitter_compatible=true
+    """.trimIndent()
+
     companion object {
         fun fromJson(json: String): GameProfile {
             val j = JSONObject(json)
@@ -107,6 +147,18 @@ data class GameProfile(
             platform = "amiga",
         )
 
+        fun presetDuneIIAmiga() = GameProfile(
+            gameId = "dune_ii_amiga",
+            title = "Dune II: The Battle for Arrakis",
+            os = "Amiga Kickstart 1.3",
+            cycles = 0,
+            frameCap = 50,
+            memMb = 2,
+            mixerRate = 44100,
+            machine = "amiga_a500",
+            platform = "amiga",
+        )
+
         fun presetNintendoDsi() = GameProfile(
             gameId = "nintendo_dsi_demo",
             title = "Nintendo DSi Demo",
@@ -152,11 +204,10 @@ enum class ConsoleType {
                 n.endsWith(".bin") || n.endsWith(".cue") || n.endsWith(".img")
                     -> PS1
                 n.endsWith(".iso") -> {
-                    // Heuristic: large ISOs are likely PS2
                     val file = java.io.File(filePath)
                     if (file.exists() && file.length() > 700 * 1024 * 1024) PS2 else PS1
                 }
-                else -> DOSBOX              // default for folders / .exe / .com
+                else -> DOSBOX
             }
         }
     }
@@ -173,6 +224,7 @@ object GameProfileStore {
             writeIfMissing(GameProfile.presetRedAlert95())
             writeIfMissing(GameProfile.presetDune2000Win98())
             writeIfMissing(GameProfile.presetAmigaA500())
+            writeIfMissing(GameProfile.presetDuneIIAmiga())
             writeIfMissing(GameProfile.presetNintendoDsi())
             writeIfMissing(GameProfile.presetPs1())
         }
@@ -196,6 +248,7 @@ object GameProfileStore {
     private fun gameIdForName(key: String): String = when {
         "red alert" in key || "command" in key || "c&c" in key -> "cnc_red_alert_win95"
         "dune 2000" in key -> "dune_2000_win98"
+        "dune ii" in key || "dune 2" in key -> "dune_ii_amiga"
         "amiga" in key || "a500" in key -> "amiga_a500_demo"
         "dsi" in key || "nintendo ds" in key -> "nintendo_dsi_demo"
         "ps1" in key || "playstation" in key || "psx" in key -> "ps1_game_demo"
@@ -204,6 +257,7 @@ object GameProfileStore {
 
     private fun presetForGameId(gameId: String): GameProfile = when (gameId) {
         "cnc_red_alert_win95" -> GameProfile.presetRedAlert95()
+        "dune_ii_amiga" -> GameProfile.presetDuneIIAmiga()
         "amiga_a500_demo" -> GameProfile.presetAmigaA500()
         "nintendo_dsi_demo" -> GameProfile.presetNintendoDsi()
         "ps1_game_demo" -> GameProfile.presetPs1()

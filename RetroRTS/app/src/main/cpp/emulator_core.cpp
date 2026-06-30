@@ -44,7 +44,10 @@ std::string LaunchGame(const std::string& console,
         return "OK: DOSBox launching " + romPath;
 
     } else if (c == "AMIGA") {
-        return "OK: Amiga launching " + romPath;
+        auto result = retrorts::amiga::LaunchAmigaGame(romPath);
+        if (!result.ok) return "ERROR: " + result.message;
+        // TODO: Invoke UAE emulator with result.resolvedBiosPath and result.resolvedRomPath
+        return "OK: " + result.message;
 
     } else if (c == "NINTENDO_DSI" || c == "DSI") {
         auto result = retrorts::dsi::LaunchDsiGame(romPath);
