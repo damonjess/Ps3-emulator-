@@ -14,6 +14,8 @@ std::atomic<uint16_t> g_pad_state[2]{0, 0};
 
 extern "C" int PCSX_Run(const char* biosPath, const char* discPath, const char* saveDir) {
     if (!biosPath || !discPath || !saveDir) {
+// TODO(RepoScanner): [ERROR] build: C/C++ error: 'psxcommon.h' file not found — Fix: Ensure 'psxcommon.h' is included in your CMakeLists.txt include_directories() or
+// TODO(RepoScanner): Missing header 'psxcommon.h' — add to CMakeLists.txt include_directories() or install the dependency
         LOGE("PCSX_Run: null path");
         return -1;
     }
