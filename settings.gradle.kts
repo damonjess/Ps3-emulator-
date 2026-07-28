@@ -7,7 +7,7 @@ pluginManagement {
 }
 
 dependencyResolutionManagement {
-    repositoriesMode.set(RepositoriesMode.PREFER_LOCAL)
+    repositoriesMode.set(RepositoriesMode.PREFER_INTEGRATION)
     repositories {
         google()
         mavenCentral()
