@@ -37,30 +37,6 @@ std::string ext(const std::string& path) {
     return pos == std::string::npos ? "" : toLower(path.substr(pos));
 }
 
-static bool isLikelyMultiTrack(const std::string& binPath) {
-    // Games known to be multi-track (data + audio CD tracks)
-    // For these, auto-generated single-track cue will crash PCSX
-    std::string lower = binPath;
-    std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
-    const char* multiTrackGames[] = {
-        "gta", "grand theft", "wipeout", "wipe out",
-        "tekken", "ridge racer", "destruction derby",
-        "crash bandicoot", "spyro", "medievil",
-        "final fantasy", "metal gear", "castlevania",
-        nullptr
-    };
-    for (int i = 0; multiTrackGames[i]; i++) {
-        if (lower.find(multiTrackGames[i]) != std::string::npos)
-            return true;
-    }
-    // Also detect by file size — single-track PS1 games are
-    // typically under 650MB. Multi-track are often larger.
-    std::ifstream f(binPath, std::ios::ate | std::ios::binary);
-    if (f.good() && f.tellg() > 650LL * 1024 * 1024)
-        return true;
-    return false;
-}
-
 static std::string generateCue(const std::string& binPath,
                                 const std::string& cacheDir) {
     std::string filename = binPath.substr(binPath.rfind('/') + 1);
@@ -73,15 +49,9 @@ static std::string generateCue(const std::string& binPath,
         return sideBySideCue;
     }
 
-    // Second check: is this likely a multi-track game?
-    // If so, refuse to auto-generate — user must supply real .cue
-    if (isLikelyMultiTrack(binPath)) {
-        LOGE("Multi-track game detected: %s — cannot auto-generate cue",
-             filename.c_str());
-        return "";  // caller will return error to UI
-    }
-
-    // Safe to auto-generate for simple single-track homebrew/demos
+    // GTA2 and other multi-track games usually need a real .cue for audio.
+    // However, we will auto-generate a single-track cue anyway so the game
+    // at least BOOTS and is playable (just without CD music).
     std::string cueName = filename.substr(0, filename.rfind('.')) + ".cue";
     std::string cuePath = cacheDir + "/" + cueName;
 

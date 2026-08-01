@@ -1,6 +1,7 @@
 package com.retrorts
 
 import android.content.Context
+import android.annotation.SuppressLint
 import android.media.AudioAttributes
 import android.media.AudioFocusRequest
 import android.media.AudioManager
@@ -71,8 +72,10 @@ import com.retrorts.ui.GameProfile
 import com.retrorts.ui.GameProfileStore
 import com.retrorts.ui.GamePathValidator
 import com.retrorts.ui.NativeEmulatorBridge
+import com.retrorts.ui.downloads.DownloadsScreen
 import kotlinx.coroutines.*
 import java.io.File
+import java.io.InputStream
 import java.util.zip.ZipInputStream
 import android.widget.Toast
 import kotlin.math.roundToInt
@@ -106,6 +109,12 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         requestStoragePermissions()
         extractSystemAssets() // Move bundled BIOS to SD card
+
+        // Status check on startup
+        if (hasStoragePermission()) {
+            Toast.makeText(this, "RetroRTS: Storage OK", Toast.LENGTH_SHORT).show()
+        }
+
         setContent {
             RetroRtsTheme {
                 RootApp(
@@ -119,34 +128,53 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun hasStoragePermission(): Boolean =
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+    fun hasStoragePermission(): Boolean {
+        val permissionOk = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             Environment.isExternalStorageManager()
         } else {
             checkSelfPermission(android.Manifest.permission.READ_EXTERNAL_STORAGE) ==
+                    android.content.pm.PackageManager.PERMISSION_GRANTED &&
+            checkSelfPermission(android.Manifest.permission.WRITE_EXTERNAL_STORAGE) ==
                     android.content.pm.PackageManager.PERMISSION_GRANTED
         }
+        return permissionOk && canWriteToPublicStorage()
+    }
+
+    private fun canWriteToPublicStorage(): Boolean {
+        return runCatching {
+            val testDir = File(Environment.getExternalStorageDirectory(), "RetroRTS/.test")
+            testDir.mkdirs()
+            val testFile = File(testDir, "write_test.tmp")
+            testFile.writeText("test")
+            val ok = testFile.exists() && testFile.readText() == "test"
+            testFile.delete()
+            ok
+        }.getOrDefault(false)
+    }
 
     private fun requestStoragePermissions() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             if (!Environment.isExternalStorageManager()) {
-                val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
-                    data = Uri.parse("package:$packageName")
-                }
                 try {
+                    val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
+                        data = Uri.parse("package:$packageName")
+                    }
                     storagePermissionLauncher.launch(intent)
                 } catch (e: Exception) {
-                    // Fallback to the general settings list if the package-specific intent fails
                     storagePermissionLauncher.launch(Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
                 }
             }
         } else {
-            legacyPermissionLauncher.launch(
-                arrayOf(
-                    android.Manifest.permission.READ_EXTERNAL_STORAGE,
-                    android.Manifest.permission.WRITE_EXTERNAL_STORAGE
-                )
+            val perms = mutableListOf(
+                android.Manifest.permission.READ_EXTERNAL_STORAGE,
+                android.Manifest.permission.WRITE_EXTERNAL_STORAGE
             )
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                perms.add(android.Manifest.permission.READ_MEDIA_IMAGES)
+                perms.add(android.Manifest.permission.READ_MEDIA_AUDIO)
+                perms.add(android.Manifest.permission.READ_MEDIA_VIDEO)
+            }
+            legacyPermissionLauncher.launch(perms.toTypedArray())
         }
     }
 
@@ -393,6 +421,9 @@ private fun RootApp(
 
 @Composable
 private fun PermissionScreen(onRequest: () -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val storageOk = (context as? MainActivity)?.hasStoragePermission() ?: false
+
     Box(
         Modifier.fillMaxSize().background(Color(0xFF1B1A16)),
         contentAlignment = Alignment.Center
@@ -408,14 +439,54 @@ private fun PermissionScreen(onRequest: () -> Unit) {
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold
             )
+            
+            Surface(
+                color = if (storageOk) Color(0xFF2E7D32) else Color(0xFFC62828),
+                shape = RoundedCornerShape(4.dp)
+            ) {
+                Text(
+                    text = if (storageOk) "Status: GRANTED" else "Status: RESTRICTED",
+                    color = Color.White,
+                    style = MaterialTheme.typography.labelMedium,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                )
+            }
+
             Text(
-                "RetroRTS needs 'All Files Access' to read your game files " +
-                        "from /sdcard/RetroRTS/Games. Tap the button below, then " +
-                        "enable the permission and return to the app.",
+                "RetroRTS needs 'All Files Access' to manage your game library. " +
+                        "On the next screen, find RetroRTS and toggle 'Allow access to manage all files'.",
                 color = Color.White,
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center
             )
-            Button(onClick = onRequest) { Text("Grant Storage Access") }
+            
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Button(
+                    onClick = onRequest,
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4A6A2A))
+                ) { 
+                    Text("Open Settings") 
+                }
+                
+                OutlinedButton(
+                    onClick = { 
+                        if (storageOk) {
+                            Toast.makeText(context, "Permission verified!", Toast.LENGTH_SHORT).show()
+                        } else {
+                            Toast.makeText(context, "Still restricted. Check settings.", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                ) {
+                    Text("Check Again", color = Color.White)
+                }
+            }
+            
+            Text(
+                "Why? Emulators need direct path access to large files (ISOs, ROMs) which standard Android storage pickers do not support.",
+                color = Color(0xFF93A17B),
+                style = MaterialTheme.typography.labelSmall,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(top = 8.dp)
+            )
         }
     }
 }
@@ -558,7 +629,7 @@ private fun LauncherScreen(
             when (activeTab) {
                 HomeTab.LIBRARY  -> LibraryTab(games, folderPicker, filePicker, onLaunch)
                 HomeTab.BIOS     -> BiosTab()
-                HomeTab.DOWNLOAD -> DownloadTab { entry -> games.add(entry) }
+                HomeTab.DOWNLOAD -> DownloadsScreen()
                 HomeTab.SETTINGS -> SettingsTab(settings, onSettings, onAbout)
             }
         }
@@ -952,289 +1023,6 @@ private fun BiosTab() {
                 }
             }
         }
-    }
-}
-
-data class DownloadableGame(
-    val name: String,
-    val console: String,
-    val description: String,
-    val url: String,          // info page
-    val directUrl: String? = null, // direct link for auto-install
-    val isFree: Boolean = true
-)
-
-@Composable
-private fun DownloadTab(onAddGame: (GameEntry) -> Unit) {
-    val context = LocalContext.current
-
-    val freeGames = remember {
-        listOf(
-            DownloadableGame(
-                name        = "Homebrew: 240p Test Suite",
-                console     = "PS1",
-                description = "Essential video diagnostic tool for PS1",
-                url         = "https://github.com/filipalac/240pTestSuite-PS1",
-                directUrl   = "https://github.com/filipalac/240pTestSuite-PS1/releases/download/v1.17/240pTestSuitePS1.zip"
-            ),
-            DownloadableGame(
-                name        = "Homebrew: Celeste Classic",
-                console     = "PS1",
-                description = "Faithful PS1 port of the original Pico-8 Celeste",
-                url         = "https://midnight-mirage.itch.io/celeste-classic-psx",
-                directUrl   = "https://github.com/wildmonkeydan/ccleste-psx/releases/download/v1.1/build.zip"
-            ),
-            DownloadableGame(
-                name        = "Homebrew: Loonies 8192",
-                console     = "PS1",
-                description = "Addictive block puzzle game ported to PS1",
-                url         = "https://thp.itch.io/loonies8192",
-                directUrl   = "https://github.com/thp/loonies8192/releases/download/v1.0/loonies8192_psx.zip"
-            ),
-            DownloadableGame(
-                name        = "Demo: Yume Nikki PS1",
-                console     = "PS1",
-                description = "3D reimagining of the cult classic for real PS1 hardware",
-                url         = "https://v-p-v.itch.io/yume-nikki-ps1"
-            ),
-            DownloadableGame(
-                name        = "FreeDOS 1.3",
-                console     = "DOS",
-                description = "Free and legal full DOS operating system",
-                url         = "https://www.freedos.org/download/"
-            ),
-            DownloadableGame(
-                name        = "Beneath a Steel Sky",
-                console     = "DOS",
-                description = "Classic point-and-click adventure — free on GOG",
-                url         = "https://www.gog.com/game/beneath_a_steel_sky"
-            ),
-            DownloadableGame(
-                name        = "Doom Shareware (1993)",
-                console     = "DOS",
-                description = "Episode 1 — officially free",
-                url         = "https://archive.org/details/DoomsharewareEpisode"
-            ),
-            DownloadableGame(
-                name        = "Wolfenstein 3D Shareware",
-                console     = "DOS",
-                description = "Episode 1 — officially free from id Software",
-                url         = "https://archive.org/details/Wolfenstein3dSharewareEpisode1"
-            ),
-            DownloadableGame(
-                name        = "PS1 Homebrew — Lameguy64 Collection",
-                console     = "PS1",
-                description = "Free PS1 homebrew games — legal to download and run",
-                url         = "https://github.com/Lameguy64/PSn00bSDK/releases"
-            ),
-            DownloadableGame(
-                name        = "Tyrian 2000",
-                console     = "DOS",
-                description = "Shoot-em-up — released as freeware by Epic",
-                url         = "https://archive.org/details/tyrian2000"
-            ),
-        )
-    }
-
-    Column(
-        Modifier
-            .fillMaxSize()
-            .background(Color(0xFF1B1A16))
-    ) {
-        // Header
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .background(Color(0xFF111110))
-                .padding(horizontal = 12.dp, vertical = 10.dp)
-        ) {
-            Column {
-                Text(
-                    "Download Games",
-                    color = Color(0xFFD8C77A),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    "Free & legal sources only",
-                    color = Color(0xFF93A17B),
-                    style = MaterialTheme.typography.labelSmall
-                )
-            }
-        }
-
-        Text(
-            "Tap a game to open its download page in your browser. " +
-            "Once downloaded, add the file via Library → + Folder or + .bin",
-            color = Color(0xFF93A17B),
-            style = MaterialTheme.typography.bodySmall,
-            modifier = Modifier.padding(12.dp)
-        )
-
-        // Group by console
-        val grouped = freeGames.groupBy { it.console }
-
-        LazyColumn(
-            contentPadding = PaddingValues(12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            grouped.forEach { (consoleName, entries) ->
-                item {
-                    Text(
-                        consoleName,
-                        color = Color(0xFFD8C77A),
-                        style = MaterialTheme.typography.labelLarge,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(vertical = 4.dp)
-                    )
-                }
-                items(entries) { game ->
-                    var isDownloading by remember { mutableStateOf(false) }
-                    Card(
-                        colors  = CardDefaults.cardColors(containerColor = Color(0xFF2B2920)),
-                        shape   = RoundedCornerShape(10.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable {
-                                if (game.directUrl == null) {
-                                    context.startActivity(
-                                        Intent(Intent.ACTION_VIEW, AndroidUri.parse(game.url))
-                                    )
-                                }
-                            }
-                    ) {
-                        Row(
-                            Modifier.padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(Modifier.weight(1f)) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text(
-                                        game.name,
-                                        color = Color(0xFFE6DCA3),
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        fontWeight = FontWeight.SemiBold
-                                    )
-                                    Spacer(Modifier.width(6.dp))
-                                    Text(
-                                        "FREE",
-                                        color = Color(0xFF5A9A4A),
-                                        style = MaterialTheme.typography.labelSmall,
-                                        modifier = Modifier
-                                            .background(Color(0xFF1A3A1A), RoundedCornerShape(4.dp))
-                                            .padding(horizontal = 4.dp, vertical = 2.dp)
-                                    )
-                                }
-                                Text(
-                                    game.description,
-                                    color = Color(0xFF93A17B),
-                                    style = MaterialTheme.typography.bodySmall
-                                )
-                            }
-                            
-                            if (game.directUrl != null) {
-                                IconButton(
-                                    onClick = {
-                                        if (!isDownloading) {
-                                            isDownloading = true
-                                            downloadAndInstall(context, game) {
-                                                isDownloading = false
-                                                // Library will auto-refresh via scanner or user can manual scan
-                                            }
-                                        }
-                                    },
-                                    enabled = !isDownloading
-                                ) {
-                                    Icon(
-                                        if (isDownloading) Icons.Filled.InstallMobile else Icons.Filled.Download,
-                                        contentDescription = "Install",
-                                        tint = if (isDownloading) Color.Gray else Color(0xFF6A6A9A)
-                                    )
-                                }
-                            } else {
-                                Icon(
-                                    Icons.Filled.Download,
-                                    contentDescription = "Open",
-                                    tint = Color(0xFF6A6A9A),
-                                    modifier = Modifier.size(20.dp)
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-private fun unzip(zipFile: File, targetDirectory: File) {
-    ZipInputStream(zipFile.inputStream()).use { zis ->
-        var entry = zis.nextEntry
-        while (entry != null) {
-            val newFile = File(targetDirectory, entry.name)
-            if (entry.isDirectory) {
-                newFile.mkdirs()
-            } else {
-                newFile.parentFile?.mkdirs()
-                newFile.outputStream().use { zis.copyTo(it) }
-            }
-            zis.closeEntry()
-            entry = zis.nextEntry
-        }
-    }
-}
-
-private fun downloadAndInstall(context: Context, game: DownloadableGame, onComplete: () -> Unit) {
-    val url = game.directUrl ?: return
-    val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-    val request = DownloadManager.Request(AndroidUri.parse(url))
-        .setTitle("Downloading ${game.name}")
-        .setDescription("RetroRTS Homebrew Installer")
-        .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-        .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, "${game.name}.zip")
-
-    val downloadId = dm.enqueue(request)
-
-    val receiver = object : BroadcastReceiver() {
-        override fun onReceive(ctx: Context?, intent: Intent?) {
-            val id = intent?.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1)
-            if (id == downloadId) {
-                val query = DownloadManager.Query().setFilterById(downloadId)
-                val cursor = dm.query(query)
-                if (cursor.moveToFirst()) {
-                    val statusIdx = cursor.getColumnIndex(DownloadManager.COLUMN_STATUS)
-                    if (cursor.getInt(statusIdx) == DownloadManager.STATUS_SUCCESSFUL) {
-                        val localUriIdx = cursor.getColumnIndex(DownloadManager.COLUMN_LOCAL_URI)
-                        if (localUriIdx != -1) {
-                            val fileUriString = cursor.getString(localUriIdx)
-                            val fileUri = AndroidUri.parse(fileUriString)
-                            
-                            val source = java.io.File(fileUri.path ?: "")
-                            val destDir = File(Environment.getExternalStorageDirectory(), "RetroRTS/Games/${game.console}")
-                            if (!destDir.exists()) destDir.mkdirs()
-                            
-                            if (source.extension.lowercase() == "zip") {
-                                runCatching { unzip(source, destDir) }
-                                source.delete() // Clean up zip
-                            } else {
-                                val destFile = File(destDir, source.name)
-                                source.renameTo(destFile)
-                            }
-                            
-                            Toast.makeText(context, "${game.name} installed to Library!", Toast.LENGTH_SHORT).show()
-                        }
-                    }
-                }
-                cursor.close()
-                context.unregisterReceiver(this)
-                onComplete()
-            }
-        }
-    }
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-        context.registerReceiver(receiver, IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE), Context.RECEIVER_EXPORTED)
-    } else {
-        context.registerReceiver(receiver, IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE))
     }
 }
 

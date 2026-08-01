@@ -5,14 +5,80 @@
 #include <dlfcn.h>
 #include <android/log.h>
 #include <algorithm>
+#include <fstream>
 
 #define LOG_TAG "RetroRTS_Core"
+#define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
 
-// Direct call — PCSX_Run is statically linked, no dlopen needed
+// Forward declaration — real implementation comes from pcsx_core (or stub in pcsx_jni_entry.cpp)
 extern "C" int PCSX_Run(const char* bios, const char* disc, const char* saveDir);
 
 namespace retrorts {
+
+namespace {
+    bool writeTextFile(const std::string& path, const std::string& content) {
+        std::ofstream f(path);
+        if (!f) return false;
+        f << content;
+        return f.good();
+    }
+
+    std::string buildAmigaConfig(const std::string& gamePath, const std::string& biosPath) {
+        std::string e;
+        if (gamePath.rfind('.') != std::string::npos) {
+            e = gamePath.substr(gamePath.rfind('.'));
+        }
+        std::string cfg = R"([general]
+fullscreen=false
+width=640
+height=512
+amiga_model=A500
+cpu_speed=fastest
+cpu_type=68000
+fpu_type=none
+chipset=ocs
+chipram=2
+fastram=0
+bogomem=0
+z3fastram=0
+
+[display]
+framerate=50
+vsync=true
+linemode=scanlines
+aspect=true
+
+[sound]
+sound=true
+frequency=44100
+channels=2
+volume=100
+
+[input]
+joystick_type=automatic
+mouse_speed=100
+
+[cpu]
+cpu_cycle_exact=false
+cpu_compatible=true
+
+[blitter]
+blitter_cycle_exact=false
+blitter_compatible=true
+
+)";
+
+        if (e == ".adf") {
+            cfg += "floppy0=" + gamePath + "\n";
+            cfg += "floppy0type=3.5_DD\n";
+        } else if (e == ".hdf" || e == ".dms") {
+            cfg += "hardfile0=" + gamePath + "\n";
+        }
+        cfg += "\nkickstart_rom_file=" + biosPath + "\n";
+        return cfg;
+    }
+}
 
 std::string LaunchGame(const std::string& console,
                        const std::string& romPath,
@@ -24,6 +90,7 @@ std::string LaunchGame(const std::string& console,
         return s;
     }();
 
+    // ── PS1 ──────────────────────────────────────────────────────────────
     if (c == "PS1") {
         auto result = retrorts::ps1::LaunchPs1Game(romPath, cacheDir);
         if (!result.ok) return "ERROR: " + result.message;
@@ -34,36 +101,153 @@ std::string LaunchGame(const std::string& console,
         }
         if (r != 0) return "ERROR: PS1 error code " + std::to_string(r);
         return "OK: " + result.message;
+    }
 
-    } else if (c == "PS2") {
-        // PS2 core is not yet fully implemented in this prototype
-        return "ERROR: PS2 core implementation pending. Use PS1 for now.";
+    // ── PS2 ──────────────────────────────────────────────────────────────
+    else if (c == "PS2") {
+        return "ERROR: PS2 core is not yet implemented. "
+               "A real PS2 emulator requires PCSX2 integration (128-bit CPU, GS emulation, VU0/VU1). "
+               "This is planned for a future release.";
+    }
 
-    } else if (c == "DOSBOX" || c == "DOS") {
-        // DOSBox launch via DosboxBridge
-        return "OK: DOSBox launching " + romPath;
+    // ── DOSBOX ───────────────────────────────────────────────────────────
+    else if (c == "DOSBOX" || c == "DOS") {
+        std::string gameDir = romPath;
+        size_t lastSlash = romPath.rfind('/');
+        if (lastSlash != std::string::npos) {
+            std::string ext = romPath.substr(romPath.rfind('.'));
+            if (ext == ".exe" || ext == ".bat" || ext == ".com" || ext == ".conf") {
+                gameDir = romPath.substr(0, lastSlash);
+            }
+        }
 
-    } else if (c == "AMIGA") {
+        std::string configPath = cacheDir + "/dosbox_auto.conf";
+        std::string config = R"([dosbox]
+machine=svga_s3
+memsize=128
+
+[cpu]
+core=dynamic
+cycles=auto 30000 80% limit 40000
+
+[render]
+frameskip=0
+aspect=true
+
+[sblaster]
+sbtype=sb16
+sbbase=220
+irq=7
+dma=1
+hdma=5
+oplmode=auto
+oplemu=default
+
+[speaker]
+pcspeaker=true
+
+[joystick]
+joysticktype=auto
+
+[autoexec]
+@echo off
+mount c ")" + gameDir + R"("
+c:
+if exist dune2000.exe dune2000.exe
+if exist ra95.exe ra95.exe
+if exist c&c.exe c&c.exe
+if exist play.bat call play.bat
+if exist game.exe game.exe
+)";
+
+        if (!writeTextFile(configPath, config)) {
+            return "ERROR: Failed to write DOSBox config to " + configPath;
+        }
+
+        void* lib = dlopen("libdosbox_pure.so", RTLD_NOW);
+        if (!lib) lib = dlopen("libdosbox.so", RTLD_NOW);
+        if (!lib) {
+            LOGE("DOSBox library not found: %s", dlerror());
+            return "ERROR: DOSBox core library not found. "
+                   "Place libdosbox_pure.so in jniLibs/arm64-v8a/ or add dosbox_pure.aar to app/libs/.";
+        }
+
+        typedef int (*db_init_t)(const char* configPath, const char* saveDir);
+        auto init_fn = reinterpret_cast<db_init_t>(dlsym(lib, "dosbox_init"));
+        if (!init_fn) init_fn = reinterpret_cast<db_init_t>(dlsym(lib, "DOSBOX_Init"));
+
+        if (!init_fn) {
+            dlclose(lib);
+            return "ERROR: DOSBox init symbol not found in library.";
+        }
+
+        int r = init_fn(configPath.c_str(), saveDir.c_str());
+        if (r != 0) {
+            dlclose(lib);
+            return "ERROR: DOSBox initialization failed with code " + std::to_string(r);
+        }
+
+        LOGI("DOSBox started: config=%s", configPath.c_str());
+        return "OK: DOSBox launching " + romPath + " with config " + configPath;
+    }
+
+    // ── AMIGA ────────────────────────────────────────────────────────────
+    else if (c == "AMIGA") {
         auto result = retrorts::amiga::LaunchAmigaGame(romPath);
         if (!result.ok) return "ERROR: " + result.message;
-        // TODO: Invoke UAE emulator with result.resolvedBiosPath and result.resolvedRomPath
-        return "OK: " + result.message;
 
-    } else if (c == "NINTENDO_DSI" || c == "DSI") {
+        std::string configPath = cacheDir + "/uae_auto.uae";
+        std::string uaeConfig = buildAmigaConfig(romPath, result.resolvedBiosPath);
+
+        if (!writeTextFile(configPath, uaeConfig)) {
+            return "ERROR: Failed to write UAE config to " + configPath;
+        }
+
+        void* lib = dlopen("libpuae.so", RTLD_NOW);
+        if (!lib) lib = dlopen("libuae.so", RTLD_NOW);
+        if (!lib) {
+            LOGE("UAE library not found: %s", dlerror());
+            return "ERROR: Amiga core library not found. "
+                   "Place libpuae.so in jniLibs/arm64-v8a/.";
+        }
+
+        typedef int (*uae_init_t)(const char* configPath);
+        auto init_fn = reinterpret_cast<uae_init_t>(dlsym(lib, "uae_init"));
+        if (!init_fn) init_fn = reinterpret_cast<uae_init_t>(dlsym(lib, "UAE_Init"));
+
+        if (!init_fn) {
+            dlclose(lib);
+            return "ERROR: UAE init symbol not found in library.";
+        }
+
+        int r = init_fn(configPath.c_str());
+        if (r != 0) {
+            dlclose(lib);
+            return "ERROR: UAE initialization failed with code " + std::to_string(r);
+        }
+
+        LOGI("Amiga UAE started: config=%s", configPath.c_str());
+        return "OK: " + result.message + " Config: " + configPath;
+    }
+
+    // ── NINTENDO DSi ─────────────────────────────────────────────────────
+    else if (c == "NINTENDO_DSI" || c == "DSI") {
         auto result = retrorts::dsi::LaunchDsiGame(romPath);
         return result.ok ? "OK: " + result.message
                          : "ERROR: " + result.message;
+    }
 
-    } else {
-        // Fallback — try to detect from file extension
+    // ── AUTO-DETECT fallback ─────────────────────────────────────────────
+    else {
         const std::string lower = [&]{
             std::string s = romPath;
             std::transform(s.begin(), s.end(), s.begin(), ::tolower);
             return s;
         }();
+
         if (lower.ends_with(".bin") || lower.ends_with(".cue") ||
             lower.ends_with(".img") || lower.ends_with(".iso")) {
-            // Check for PS2 heuristic
+
             bool isPs2 = false;
             if (lower.ends_with(".iso")) {
                 FILE* f = fopen(romPath.c_str(), "rb");
@@ -76,10 +260,9 @@ std::string LaunchGame(const std::string& console,
             }
 
             if (isPs2) {
-                return "ERROR: PS2 core implementation pending. ISO detected as PS2.";
+                return "ERROR: PS2 core is not yet implemented. ISO detected as PS2 (size > 700MB).";
             }
 
-            // Re-route to PS1
             auto result = retrorts::ps1::LaunchPs1Game(romPath, cacheDir);
             if (!result.ok) return "ERROR: " + result.message;
             int r = PCSX_Run(result.resolvedBiosPath.c_str(), result.resolvedCuePath.c_str(), saveDir.c_str());
@@ -90,6 +273,7 @@ std::string LaunchGame(const std::string& console,
             return r == 0 ? "OK: PS1 auto-detected"
                           : "ERROR: PS1 error " + std::to_string(r);
         }
+
         return "ERROR: Unknown console type: " + console;
     }
 }

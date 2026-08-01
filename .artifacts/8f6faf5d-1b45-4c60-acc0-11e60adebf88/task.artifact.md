@@ -1,0 +1,5 @@
+- `[x]` Enable cleartext traffic in `AndroidManifest.xml`
+- `[x]` Update download destination in `MainActivity.kt`
+- `[x]` Add error reporting for `DownloadManager` failures
+- `[x]` Verify unzip and move logic works with private storage
+- `[x]` Verify build
