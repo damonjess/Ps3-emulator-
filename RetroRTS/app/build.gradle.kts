@@ -4,6 +4,15 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+val ps1CoreBundled = file("src/main/cpp/pcsx_rearmed/libpcsxcore/psxbios.c").exists()
+val dosboxCoreBundled =
+    fileTree("libs") {
+        include("**/dosbox*.aar", "**/libdosbox*.so")
+    }.files.isNotEmpty() ||
+    fileTree("src/main/jniLibs") {
+        include("**/libdosbox*.so")
+    }.files.isNotEmpty()
+
 android {
     namespace = "com.retrorts"
     compileSdk = 35
@@ -15,6 +24,8 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "1.0"
+        buildConfigField("boolean", "HAS_PS1_CORE", ps1CoreBundled.toString())
+        buildConfigField("boolean", "HAS_DOSBOX_CORE", dosboxCoreBundled.toString())
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -47,6 +58,7 @@ android {
     }
 
     buildFeatures {
+        buildConfig = true
         compose = true
         viewBinding = false
     }

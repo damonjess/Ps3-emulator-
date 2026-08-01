@@ -271,6 +271,10 @@ private suspend fun launchGameWithNativeBackend(
     game: GameEntry,
     settings: SettingsState
 ): LaunchResult = withContext(Dispatchers.IO) {
+    CoreAvailability.unsupportedLaunchMessage(game.consoleType)?.let { message ->
+        return@withContext LaunchResult(false, message)
+    }
+
     if (!DosboxBridge.isAvailable) {
         return@withContext LaunchResult(false, "Native library not loaded. Check NDK build.")
     }

@@ -17,11 +17,61 @@ import com.retrorts.download.DownloadableSuite
 fun DownloadsScreen() {
     val context = LocalContext.current
     val suites = remember { DownloadRepository.getAvailableSuites() }
+    val unavailablePlatforms = remember { DownloadRepository.getUnavailablePlatforms() }
     val activeDownloads = remember { mutableStateMapOf<String, Long>() }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize()
     ) {
+        if (unavailablePlatforms.isNotEmpty()) {
+            item {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant
+                    )
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text(
+                            text = "Unavailable In This Build",
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = unavailablePlatforms.joinToString(
+                                separator = ", ",
+                                prefix = "Hidden downloads: "
+                            ),
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Bundle the matching native core and rebuild to enable them.",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                }
+            }
+        }
+
+        if (suites.isEmpty()) {
+            item {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                ) {
+                    Text(
+                        text = "No downloadable suites are available for the currently bundled emulator cores.",
+                        modifier = Modifier.padding(16.dp),
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+            }
+        }
+
         items(suites, key = { it.id }) { suite ->
             SuiteCard(
                 suite = suite,

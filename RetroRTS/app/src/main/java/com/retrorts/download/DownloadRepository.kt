@@ -5,13 +5,19 @@ import android.content.Context
 import android.net.Uri
 import android.os.Environment
 import androidx.core.content.getSystemService
+import com.retrorts.CoreAvailability
 
 object DownloadRepository {
 
     /**
      * Test suites and homebrew games for RetroRTS.
      */
-    fun getAvailableSuites(): List<DownloadableSuite> = listOf(
+    fun getAvailableSuites(): List<DownloadableSuite> = allSuites()
+        .filter(CoreAvailability::isDownloadSupported)
+
+    fun getUnavailablePlatforms(): List<String> = CoreAvailability.unavailableDownloadPlatforms()
+
+    private fun allSuites(): List<DownloadableSuite> = listOf(
         DownloadableSuite(
             id = "240p_ps1",
             name = "240p Test Suite (PS1)",
@@ -51,6 +57,8 @@ object DownloadRepository {
     )
 
     fun startDownload(context: Context, suite: DownloadableSuite): Long {
+        if (!CoreAvailability.isDownloadSupported(suite)) return -1L
+
         val dm = context.getSystemService<DownloadManager>() ?: return -1L
 
         val request = DownloadManager.Request(Uri.parse(suite.downloadUrl))

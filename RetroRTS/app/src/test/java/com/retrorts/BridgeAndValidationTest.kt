@@ -1,10 +1,11 @@
 package com.retrorts
 
 import com.retrorts.ui.DosboxBridge
+import com.retrorts.ui.ConsoleType
 import com.retrorts.ui.GamePathValidator
-import com.retrorts.ui.NativeEmulatorBridge
 import com.retrorts.ui.PerfStats
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -31,8 +32,9 @@ class BridgeAndValidationTest {
     }
 
     @Test
-    fun `native bridges fail gracefully when library is unavailable in unit tests`() {
+    fun `unsupported console messaging stays user friendly`() {
         assertFalse(DosboxBridge.startDosbox("/sdcard/RetroRTS/Games/Dune2000", ""))
-        assertTrue(NativeEmulatorBridge.launchGame("NINTENDO_DSI", "/missing/game.nds").startsWith("ERROR:"))
+        assertFalse(CoreAvailability.isLaunchSupported(ConsoleType.PS2))
+        assertNotNull(CoreAvailability.unsupportedLaunchMessage(ConsoleType.PS2))
     }
 }
