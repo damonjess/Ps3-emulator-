@@ -23,7 +23,6 @@ android {
                 cppFlags += listOf(
                     "-std=c++20", 
                     "-O3", 
-                    "-flto",
                     "-ffp-contract=fast"
                 )
                 arguments += listOf(

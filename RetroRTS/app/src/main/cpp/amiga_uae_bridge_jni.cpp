@@ -17,7 +17,7 @@ std::atomic<bool> g_amiga_running{false};
 
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_retrorts_ui_AmigaBridge_startAmigaNative(
-    JNIEnv* env, jobject, jstring gamePath, jstring configPath) {
+    JNIEnv* env, jclass, jstring gamePath, jstring configPath) {
 
     if (g_amiga_running.load()) return JNI_TRUE;
     if (!gamePath || !configPath) return JNI_FALSE;
@@ -50,7 +50,7 @@ Java_com_retrorts_ui_AmigaBridge_startAmigaNative(
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_retrorts_ui_AmigaBridge_stopAmigaNative(JNIEnv*, jobject) {
+Java_com_retrorts_ui_AmigaBridge_stopAmigaNative(JNIEnv*, jclass) {
     if (!g_amiga_running.load()) return;
 
     retrorts::LibretroHost::getInstance().stop();
@@ -61,17 +61,17 @@ Java_com_retrorts_ui_AmigaBridge_stopAmigaNative(JNIEnv*, jobject) {
 
 extern "C" JNIEXPORT void JNICALL
 Java_com_retrorts_ui_AmigaBridge_updateInputNative(
-    JNIEnv*, jobject, jint port, jint buttonMask) {
+    JNIEnv*, jclass, jint port, jint buttonMask) {
     // Input handling via bridge will be added to LibretroHost
 }
 
 extern "C" JNIEXPORT void JNICALL
 Java_com_retrorts_ui_AmigaBridge_setSurfaceNative(
-    JNIEnv*, jobject, jobject surface) {
+    JNIEnv*, jclass, jobject surface) {
     // Surface handling via bridge will be added to LibretroHost
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
-Java_com_retrorts_ui_AmigaBridge_isRunningNative(JNIEnv*, jobject) {
+Java_com_retrorts_ui_AmigaBridge_isRunningNative(JNIEnv*, jclass) {
     return g_amiga_running.load() ? JNI_TRUE : JNI_FALSE;
 }

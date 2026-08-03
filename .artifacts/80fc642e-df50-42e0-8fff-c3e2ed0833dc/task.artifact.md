@@ -4,3 +4,5 @@
 - [x] Update `CMakeLists.txt` to include the bridge
 - [x] Integrate video blitting in `LibretroHost`
 - [x] Verify build and basic functionality
+- [x] Fix compilation error in `libretro_bridge.cpp` (undeclared pixel format)
+- [x] Fix linker error (duplicate `PCSX_Run` symbol)

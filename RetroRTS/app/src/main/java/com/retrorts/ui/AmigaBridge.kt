@@ -68,9 +68,9 @@ object AmigaBridge {
     }
 
     // JNI function declarations
-    private external fun startAmigaNative(gamePath: String, configPath: String): Boolean
-    private external fun stopAmigaNative()
-    private external fun isRunningNative(): Boolean
-    private external fun updateInputNative(port: Int, buttonMask: Int)
-    private external fun setSurfaceNative(surface: Surface?)
+    @JvmStatic private external fun startAmigaNative(gamePath: String, configPath: String): Boolean
+    @JvmStatic private external fun stopAmigaNative()
+    @JvmStatic private external fun isRunningNative(): Boolean
+    @JvmStatic private external fun updateInputNative(port: Int, buttonMask: Int)
+    @JvmStatic private external fun setSurfaceNative(surface: Surface?)
 }

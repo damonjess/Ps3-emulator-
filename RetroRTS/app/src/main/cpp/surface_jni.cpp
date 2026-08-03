@@ -13,7 +13,7 @@
 
 extern "C" JNIEXPORT void JNICALL
 Java_com_retrorts_ui_NativeEmulatorBridge_setSurfaceNative(
-JNIEnv* env, jobject, jobject surface) {
+JNIEnv* env, jclass, jobject surface) {
     ANativeWindow* window = surface
         ? ANativeWindow_fromSurface(env, surface)
         : nullptr;

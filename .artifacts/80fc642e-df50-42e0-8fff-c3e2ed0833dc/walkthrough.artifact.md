@@ -21,8 +21,9 @@ The Libretro wrapper bridge has been successfully implemented and integrated int
 ## Verification Results
 
 ### Build Verification
-- The project compiles successfully with the new bridge implementation.
-- Redundant JNI code and unused legacy symbol lookups were removed, resolving compiler warnings.
+- Fixed a compilation error where `RETRO_ENVIRONMENT_SET_PIXEL_FORMAT` was missing in `libretro.h`.
+- Fixed a linker error caused by a duplicate `PCSX_Run` symbol in `pcsx_jni_entry.cpp`.
+- The project now builds successfully with `:RetroRTS:app:assembleDebug`.
 
 ### Functional Summary
 The app is now prepared to load:
