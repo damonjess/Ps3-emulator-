@@ -17,6 +17,6 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "Ps3-emulator-"
+rootProject.name = "Retro-app"
 include(":RetroRTS:app")
 // Force sync trigger

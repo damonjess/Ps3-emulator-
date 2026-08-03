@@ -69,6 +69,7 @@ target_link_libraries(pcsx_core PRIVATE ZLIB::ZLIB)
 add_library(pcsx_rearmed SHARED
     native-lib.cpp
     emulator_core.cpp
+    libretro_bridge.cpp
     dsi_core.cpp
     ps1_core.cpp
     amiga_core.cpp

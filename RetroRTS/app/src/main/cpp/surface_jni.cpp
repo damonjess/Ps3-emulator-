@@ -9,6 +9,7 @@
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
 
 #include "gpu_android.h"
+#include "libretro_bridge.h"
 
 extern "C" JNIEXPORT void JNICALL
 Java_com_retrorts_ui_NativeEmulatorBridge_setSurfaceNative(
@@ -18,6 +19,7 @@ JNIEnv* env, jobject, jobject surface) {
         : nullptr;
 
     gpu_android_set_window(window);
+    retrorts::LibretroHost::getInstance().setWindow(window);
 
     if (window) ANativeWindow_release(window);
 }

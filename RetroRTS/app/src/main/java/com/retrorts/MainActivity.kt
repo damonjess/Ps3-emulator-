@@ -72,7 +72,7 @@ import com.retrorts.ui.GameProfile
 import com.retrorts.ui.GameProfileStore
 import com.retrorts.ui.GamePathValidator
 import com.retrorts.ui.NativeEmulatorBridge
-import com.retrorts.ui.downloads.DownloadsScreen
+import com.retrorts.ui.downloads.DirectImportScreen
 import kotlinx.coroutines.*
 import java.io.File
 import java.io.InputStream
@@ -629,7 +629,7 @@ private fun LauncherScreen(
             when (activeTab) {
                 HomeTab.LIBRARY  -> LibraryTab(games, folderPicker, filePicker, onLaunch)
                 HomeTab.BIOS     -> BiosTab()
-                HomeTab.DOWNLOAD -> DownloadsScreen()
+                HomeTab.DOWNLOAD -> DirectImportScreen()
                 HomeTab.SETTINGS -> SettingsTab(settings, onSettings, onAbout)
             }
         }

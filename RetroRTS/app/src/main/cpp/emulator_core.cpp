@@ -2,6 +2,7 @@
 #include "dsi_core.h"
 #include "ps1_core.h"
 #include "amiga_core.h"
+#include "libretro_bridge.h"
 #include <dlfcn.h>
 #include <android/log.h>
 #include <algorithm>
@@ -164,30 +165,12 @@ if exist game.exe game.exe
             return "ERROR: Failed to write DOSBox config to " + configPath;
         }
 
-        void* lib = dlopen("libdosbox_pure.so", RTLD_NOW);
-        if (!lib) lib = dlopen("libdosbox.so", RTLD_NOW);
-        if (!lib) {
-            LOGE("DOSBox library not found: %s", dlerror());
-            return "ERROR: DOSBox core library not found. "
-                   "Place libdosbox_pure.so in jniLibs/arm64-v8a/ or add dosbox_pure.aar to app/libs/.";
-        }
-
-        typedef int (*db_init_t)(const char* configPath, const char* saveDir);
-        auto init_fn = reinterpret_cast<db_init_t>(dlsym(lib, "dosbox_init"));
-        if (!init_fn) init_fn = reinterpret_cast<db_init_t>(dlsym(lib, "DOSBOX_Init"));
-
-        if (!init_fn) {
-            dlclose(lib);
-            return "ERROR: DOSBox init symbol not found in library.";
-        }
-
-        int r = init_fn(configPath.c_str(), saveDir.c_str());
+        int r = retrorts::dosbox_init(configPath.c_str(), saveDir.c_str());
         if (r != 0) {
-            dlclose(lib);
-            return "ERROR: DOSBox initialization failed with code " + std::to_string(r);
+            return "ERROR: DOSBox initialization failed via bridge with code " + std::to_string(r);
         }
 
-        LOGI("DOSBox started: config=%s", configPath.c_str());
+        LOGI("DOSBox started via bridge: config=%s", configPath.c_str());
         return "OK: DOSBox launching " + romPath + " with config " + configPath;
     }
 
@@ -203,30 +186,12 @@ if exist game.exe game.exe
             return "ERROR: Failed to write UAE config to " + configPath;
         }
 
-        void* lib = dlopen("libpuae.so", RTLD_NOW);
-        if (!lib) lib = dlopen("libuae.so", RTLD_NOW);
-        if (!lib) {
-            LOGE("UAE library not found: %s", dlerror());
-            return "ERROR: Amiga core library not found. "
-                   "Place libpuae.so in jniLibs/arm64-v8a/.";
-        }
-
-        typedef int (*uae_init_t)(const char* configPath);
-        auto init_fn = reinterpret_cast<uae_init_t>(dlsym(lib, "uae_init"));
-        if (!init_fn) init_fn = reinterpret_cast<uae_init_t>(dlsym(lib, "UAE_Init"));
-
-        if (!init_fn) {
-            dlclose(lib);
-            return "ERROR: UAE init symbol not found in library.";
-        }
-
-        int r = init_fn(configPath.c_str());
+        int r = retrorts::uae_init(configPath.c_str());
         if (r != 0) {
-            dlclose(lib);
-            return "ERROR: UAE initialization failed with code " + std::to_string(r);
+            return "ERROR: UAE initialization failed via bridge with code " + std::to_string(r);
         }
 
-        LOGI("Amiga UAE started: config=%s", configPath.c_str());
+        LOGI("Amiga UAE started via bridge: config=%s", configPath.c_str());
         return "OK: " + result.message + " Config: " + configPath;
     }
 

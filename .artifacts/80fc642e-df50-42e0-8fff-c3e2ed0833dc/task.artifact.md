@@ -1,0 +1,6 @@
+- [x] Implement `libretro_bridge.cpp`
+- [x] Update `emulator_core.cpp` to use the bridge
+- [x] Update JNI bridge files (`amiga_uae_bridge_jni.cpp`, `dosbox_bridge_jni.cpp`)
+- [x] Update `CMakeLists.txt` to include the bridge
+- [x] Integrate video blitting in `LibretroHost`
+- [x] Verify build and basic functionality
