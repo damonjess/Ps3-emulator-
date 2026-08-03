@@ -59,6 +59,7 @@ extern "C" {
 #define RETRO_ENVIRONMENT_GET_LOCATION_INTERFACE 29
 #define RETRO_ENVIRONMENT_GET_CORE_ASSETS_DIRECTORY 30
 #define RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY 31
+#define RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY 9
 #define RETRO_ENVIRONMENT_SET_SYSTEM_AV_INFO 32
 #define RETRO_ENVIRONMENT_SET_PROC_ADDRESS_CALLBACK 33
 #define RETRO_ENVIRONMENT_SET_SUBSYSTEM_INFO 34
@@ -94,6 +95,19 @@ extern "C" {
 #define RETRO_MEM_SAVE_RAM  1
 #define RETRO_MEM_SYSTEM_RAM 2
 #define RETRO_MEM_RTC       3
+
+enum retro_log_level
+{
+   RETRO_LOG_DEBUG = 0,
+   RETRO_LOG_INFO,
+   RETRO_LOG_WARN,
+   RETRO_LOG_ERROR
+};
+
+struct retro_log_callback
+{
+   void (*log)(enum retro_log_level level, const char *fmt, ...);
+};
 
 enum retro_pixel_format
 {

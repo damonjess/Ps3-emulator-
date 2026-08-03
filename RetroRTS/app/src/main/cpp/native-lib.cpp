@@ -1,9 +1,9 @@
 #include <jni.h>
 #include <string>
 #include "emulator_core.h"
+#include "libretro_bridge.h"
 
-extern "C"
-JNIEXPORT jstring JNICALL
+extern "C" JNIEXPORT jstring JNICALL
 Java_com_retrorts_ui_NativeEmulatorBridge_launchGameNative(JNIEnv* env, jclass, jstring console, jstring romPath, jstring cacheDir, jstring saveDir) {
     if (console == nullptr || romPath == nullptr || cacheDir == nullptr || saveDir == nullptr) {
         return env->NewStringUTF("");
@@ -30,4 +30,29 @@ Java_com_retrorts_ui_NativeEmulatorBridge_launchGameNative(JNIEnv* env, jclass, 
     env->ReleaseStringUTFChars(saveDir,  cSaveDir);
 
     return env->NewStringUTF(result.c_str());
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_retrorts_ui_NativeEmulatorBridge_setCoreDirNative(JNIEnv* env, jclass, jstring coreDir) {
+    // No-op: LibretroHost no longer uses coreDir. Cores are loaded by name or absolute path.
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_retrorts_ui_NativeEmulatorBridge_setSystemDirNative(JNIEnv* env, jclass, jstring systemDir) {
+    if (systemDir == nullptr) return;
+    const char* cDir = env->GetStringUTFChars(systemDir, nullptr);
+    if (cDir) {
+        retrorts::LibretroHost::getInstance().setSystemDir(cDir);
+        env->ReleaseStringUTFChars(systemDir, cDir);
+    }
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_retrorts_ui_NativeEmulatorBridge_setSaveDirNative(JNIEnv* env, jclass, jstring saveDir) {
+    if (saveDir == nullptr) return;
+    const char* cDir = env->GetStringUTFChars(saveDir, nullptr);
+    if (cDir) {
+        retrorts::LibretroHost::getInstance().setSaveDir(cDir);
+        env->ReleaseStringUTFChars(saveDir, cDir);
+    }
 }

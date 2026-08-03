@@ -20,7 +20,9 @@ public:
     void setWindow(ANativeWindow* window);
     bool isRunning() const { return running_; }
 
-    // Libretro callbacks
+    void setSystemDir(const std::string& dir) { systemDir_ = dir; }
+    void setSaveDir(const std::string& dir) { saveDir_ = dir; }
+
     static bool envCallback(unsigned cmd, void* data);
     static void videoCallback(const void* data, unsigned width, unsigned height, size_t pitch);
     static void audioCallback(int16_t left, int16_t right);
@@ -35,9 +37,11 @@ private:
     void* coreLib_ = nullptr;
     ANativeWindow* window_ = nullptr;
     std::atomic<bool> running_{false};
-    std::mutex coreMutex_;
+    std::recursive_mutex coreMutex_;
 
-    // Core functions
+    std::string systemDir_;
+    std::string saveDir_;
+
     void (*retro_init_fn)() = nullptr;
     void (*retro_deinit_fn)() = nullptr;
     void (*retro_run_fn)() = nullptr;
@@ -52,7 +56,6 @@ private:
     void (*retro_set_input_state_fn)(retro_input_state_t) = nullptr;
 };
 
-// Legacy bridge exports
 extern "C" {
     int PCSX_Run(const char* bios, const char* disc, const char* saveDir);
     int uae_init(const char* config_path);

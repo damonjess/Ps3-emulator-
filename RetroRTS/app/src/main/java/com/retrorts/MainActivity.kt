@@ -110,6 +110,10 @@ class MainActivity : ComponentActivity() {
         requestStoragePermissions()
         extractSystemAssets() // Move bundled BIOS to SD card
 
+        NativeEmulatorBridge.setCoreDir(applicationInfo.nativeLibraryDir)
+        NativeEmulatorBridge.setSystemDir(File(Environment.getExternalStorageDirectory(), "RetroRTS/system").absolutePath)
+        NativeEmulatorBridge.setSaveDir(File(Environment.getExternalStorageDirectory(), "RetroRTS/Saves").absolutePath)
+
         // Status check on startup
         if (hasStoragePermission()) {
             Toast.makeText(this, "RetroRTS: Storage OK", Toast.LENGTH_SHORT).show()

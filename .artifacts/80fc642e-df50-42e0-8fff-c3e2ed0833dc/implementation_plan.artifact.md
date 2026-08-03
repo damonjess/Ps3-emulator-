@@ -1,52 +1,48 @@
-# Implementation Plan - Libretro Wrapper Bridge
+# Implementation Plan - Fix Libretro Core Crash (Amiga/PUAE)
 
-This plan addresses the need for a "Libretro wrapper bridge" that allows the existing emulator JNI calls (which expect legacy symbols like `PCSX_Run`, `uae_init`, and `dosbox_init`) to work with standard Libretro cores (which export `retro_*` symbols).
+The app crashes when launching "Dune" (Amiga) during the "Loading Engine" phase. The crash is a `SIGSEGV` (null pointer dereference) in `libpuae.so` during `retro_init`, specifically within a `vfprintf` call. This indicates the core is attempting to log messages but the environment has not provided a valid logging interface.
 
 ## User Review Required
 
 > [!IMPORTANT]
-> The bridge will intercept calls to `PCSX_Run`, `uae_init`, and `dosbox_init` and redirect them to a common Libretro host. This means the app will now be able to use standard Libretro cores (`.so` files) for PS1, Amiga, and DOS.
+> The crash is caused by the Libretro bridge missing essential environment callbacks that modern cores like PUAE expect. Specifically, providing a logging interface is critical for stability.
+
+- I will implement a native logging bridge that redirects Libretro core logs to Android Logcat.
+- I will also implement "System" and "Save" directory callbacks to ensure cores know where to find BIOS and store data.
 
 ## Proposed Changes
 
-### Core Bridge Component
+### Libretro Headers
+#### [MODIFY] [libretro.h](file:///C:/Users/Damon/StudioProjects/Retro-app/RetroRTS/app/src/main/cpp/libretro.h)
+- Add missing definitions for:
+    - `retro_log_level` enum
+    - `retro_log_printf_t` typedef
+    - `retro_log_callback` struct
+    - `RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY` and other missing command IDs if needed (though some are already there).
 
-#### [NEW] [libretro.h](file:///C:/Users/Damon/StudioProjects/Retro-app/RetroRTS/app/src/main/cpp/libretro.h)
-Standard Libretro API header to allow interaction with Libretro cores.
+### Libretro Bridge
+#### [MODIFY] [libretro_bridge.h](file:///C:/Users/Damon/StudioProjects/Retro-app/RetroRTS/app/src/main/cpp/libretro_bridge.h)
+- Add `void setSystemDir(const std::string& dir)` and `void setSaveDir(const std::string& dir)` to `LibretroHost`.
+- Add private members to store these paths.
 
-#### [NEW] [libretro_bridge.h](file:///C:/Users/Damon/StudioProjects/Retro-app/RetroRTS/app/src/main/cpp/libretro_bridge.h)
-Header defining the `LibretroHost` class and legacy bridge exports.
+#### [MODIFY] [libretro_bridge.cpp](file:///C:/Users/Damon/StudioProjects/Retro-app/RetroRTS/app/src/main/cpp/libretro_bridge.cpp)
+- Implement a static `retro_log_printf` function that uses `__android_log_vprint`.
+- Update `envCallback` to handle:
+    - `RETRO_ENVIRONMENT_GET_LOG_INTERFACE`: Fill the provided struct with our logging function.
+    - `RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY`: Return the stored system directory path.
+    - `RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY`: Return the stored save directory path.
+    - `RETRO_ENVIRONMENT_GET_CORE_ASSETS_DIRECTORY`: Fallback to system directory.
 
-#### [NEW] [libretro_bridge.cpp](file:///C:/Users/Damon/StudioProjects/Retro-app/RetroRTS/app/src/main/cpp/libretro_bridge.cpp)
-Implementation of the `LibretroHost` and the bridge functions:
-- `PCSX_Run`: Maps PS1 requests to Libretro core.
-- `uae_init`: Maps Amiga requests to Puae Libretro core.
-- `dosbox_init`: Maps DOS requests to Dosbox Pure Libretro core.
-
-### Emulator Integration
-
-#### [MODIFY] [emulator_core.cpp](file:///C:/Users/Damon/StudioProjects/Retro-app/RetroRTS/app/src/main/cpp/emulator_core.cpp)
-Update core loading logic to use the new bridge functions instead of attempting to `dlsym` legacy symbols directly from the Libretro cores (which don't have them).
-
-#### [MODIFY] [amiga_uae_bridge_jni.cpp](file:///C:/Users/Damon/StudioProjects/Retro-app/RetroRTS/app/src/main/cpp/amiga_uae_bridge_jni.cpp)
-Update JNI calls to use the bridge functions.
-
-#### [MODIFY] [dosbox_bridge_jni.cpp](file:///C:/Users/Damon/StudioProjects/Retro-app/RetroRTS/app/src/main/cpp/dosbox_bridge_jni.cpp)
-Update JNI calls to use the bridge functions.
-
-### Build System
-
-#### [MODIFY] [CMakeLists.txt](file:///C:/Users/Damon/StudioProjects/Retro-app/RetroRTS/app/src/main/cpp/CMakeLists.txt)
-Add `libretro_bridge.cpp` to the build and ensure symbols are correctly exported.
-
----
+### UI / MainActivity
+#### [MODIFY] [MainActivity.kt](file:///C:/Users/Damon/StudioProjects/Retro-app/RetroRTS/app/src/main/java/com/retrorts/MainActivity.kt)
+- Update `onCreate` to set the system and save directories in the bridge using app-specific external storage paths.
 
 ## Verification Plan
 
-### Automated Tests
-- `gradle_build(":RetroRTS:app:assembleDebug")` to verify compilation.
+### Automated Verification
+- Rebuild the native components to ensure `libretro.h` changes don't break existing cores.
 
 ### Manual Verification
-- Deploy the app and attempt to launch a PS1, Amiga, or DOS game.
-- Verify that the Libretro core is loaded and `retro_run` loop starts.
-- Check logs for "Libretro bridge" initialization messages.
+- Launch Dune (Amiga).
+- Verify that the app no longer crashes during "Loading Engine".
+- Check Logcat for tags like `LibretroCore` to see logs coming from `libpuae.so`.

@@ -36,8 +36,23 @@ object NativeEmulatorBridge {
         if (nativeLoaded) updateInputNative(padIndex, buttonMask)
     }
 
+    fun setCoreDir(dir: String) {
+        if (nativeLoaded) runCatching { setCoreDirNative(dir) }
+    }
+
+    fun setSystemDir(dir: String) {
+        if (nativeLoaded) runCatching { setSystemDirNative(dir) }
+    }
+
+    fun setSaveDir(dir: String) {
+        if (nativeLoaded) runCatching { setSaveDirNative(dir) }
+    }
+
     @JvmStatic private external fun launchGameNative(console: String, romPath: String, cacheDir: String, saveDir: String): String
     @JvmStatic private external fun setSurfaceNative(surface: android.view.Surface?)
     @JvmStatic private external fun stopGameNative()
     @JvmStatic private external fun updateInputNative(padIndex: Int, buttonMask: Int)
+    @JvmStatic private external fun setCoreDirNative(coreDir: String)
+    @JvmStatic private external fun setSystemDirNative(systemDir: String)
+    @JvmStatic private external fun setSaveDirNative(saveDir: String)
 }

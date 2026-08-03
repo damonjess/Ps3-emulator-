@@ -1,8 +1,5 @@
-- [x] Implement `libretro_bridge.cpp`
-- [x] Update `emulator_core.cpp` to use the bridge
-- [x] Update JNI bridge files (`amiga_uae_bridge_jni.cpp`, `dosbox_bridge_jni.cpp`)
-- [x] Update `CMakeLists.txt` to include the bridge
-- [x] Integrate video blitting in `LibretroHost`
-- [x] Verify build and basic functionality
-- [x] Fix compilation error in `libretro_bridge.cpp` (undeclared pixel format)
-- [x] Fix linker error (duplicate `PCSX_Run` symbol)
+- [x] Update `libretro.h` with missing definitions
+- [x] Update `libretro_bridge.h` to support system/save directory paths
+- [x] Implement logging and directory callbacks in `libretro_bridge.cpp`
+- [x] Set system/save paths in `MainActivity.kt`
+- [x] Verify fix with Amiga core
