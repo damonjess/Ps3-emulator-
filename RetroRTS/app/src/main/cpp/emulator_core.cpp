@@ -24,61 +24,6 @@ namespace {
         f << content;
         return f.good();
     }
-
-    std::string buildAmigaConfig(const std::string& gamePath, const std::string& biosPath) {
-        std::string e;
-        if (gamePath.rfind('.') != std::string::npos) {
-            e = gamePath.substr(gamePath.rfind('.'));
-        }
-        std::string cfg = R"([general]
-fullscreen=false
-width=640
-height=512
-amiga_model=A500
-cpu_speed=fastest
-cpu_type=68000
-fpu_type=none
-chipset=ocs
-chipram=2
-fastram=0
-bogomem=0
-z3fastram=0
-
-[display]
-framerate=50
-vsync=true
-linemode=scanlines
-aspect=true
-
-[sound]
-sound=true
-frequency=44100
-channels=2
-volume=100
-
-[input]
-joystick_type=automatic
-mouse_speed=100
-
-[cpu]
-cpu_cycle_exact=false
-cpu_compatible=true
-
-[blitter]
-blitter_cycle_exact=false
-blitter_compatible=true
-
-)";
-
-        if (e == ".adf") {
-            cfg += "floppy0=" + gamePath + "\n";
-            cfg += "floppy0type=3.5_DD\n";
-        } else if (e == ".hdf" || e == ".dms") {
-            cfg += "hardfile0=" + gamePath + "\n";
-        }
-        cfg += "\nkickstart_rom_file=" + biosPath + "\n";
-        return cfg;
-    }
 }
 
 std::string LaunchGame(const std::string& console,
@@ -159,6 +104,9 @@ if exist ra95.exe ra95.exe
 if exist c&c.exe c&c.exe
 if exist play.bat call play.bat
 if exist game.exe game.exe
+if exist dune dune
+if exist dune.exe dune.exe
+if exist dune.bat dune.bat
 )";
 
         if (!writeTextFile(configPath, config)) {
@@ -179,20 +127,15 @@ if exist game.exe game.exe
         auto result = retrorts::amiga::LaunchAmigaGame(romPath);
         if (!result.ok) return "ERROR: " + result.message;
 
-        std::string configPath = cacheDir + "/uae_auto.uae";
-        std::string uaeConfig = buildAmigaConfig(romPath, result.resolvedBiosPath);
-
-        if (!writeTextFile(configPath, uaeConfig)) {
-            return "ERROR: Failed to write UAE config to " + configPath;
-        }
-
-        int r = retrorts::uae_init(configPath.c_str());
+        // Pass the ADF directly to the libretro core.
+        // PUAE will auto-detect kick13.rom from /sdcard/RetroRTS/system/amiga/
+        int r = retrorts::uae_init(result.resolvedRomPath.c_str());
         if (r != 0) {
             return "ERROR: UAE initialization failed via bridge with code " + std::to_string(r);
         }
 
-        LOGI("Amiga UAE started via bridge: config=%s", configPath.c_str());
-        return "OK: " + result.message + " Config: " + configPath;
+        LOGI("Amiga UAE started via bridge: rom=%s", result.resolvedRomPath.c_str());
+        return "OK: " + result.message;
     }
 
     // ── NINTENDO DSi ─────────────────────────────────────────────────────

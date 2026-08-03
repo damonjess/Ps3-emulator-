@@ -72,8 +72,15 @@ object GameLibrary {
             if (!root.exists()) return@forEach
             root.walkTopDown().maxDepth(3).forEach { file ->
                 val ext = file.extension.lowercase()
-                if (file.isFile && ext in validExts) {
-                    if (file.length() < 1024 && ext !in setOf("bat", "com", "cue")) return@forEach
+                val isExtensionless = !file.name.contains(".")
+                
+                // Recognize extensionless files if in a specific console folder
+                val isConsoleFolder = file.absolutePath.lowercase().let { 
+                    it.contains("/amiga/") || it.contains("/dosbox/") || it.contains("/dsi/")
+                }
+
+                if (file.isFile && (ext in validExts || (isExtensionless && isConsoleFolder))) {
+                    if (file.length() < 1024 && ext !in setOf("bat", "com", "cue") && !isExtensionless) return@forEach
 
                     found.add(GameEntry(
                         name     = file.nameWithoutExtension,

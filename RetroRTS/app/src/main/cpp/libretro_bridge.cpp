@@ -32,7 +32,7 @@ LibretroHost& LibretroHost::getInstance() {
     return instance;
 }
 
-LibretroHost::LibretroHost() {}
+LibretroHost::LibretroHost() = default;
 
 LibretroHost::~LibretroHost() {
     stop();
@@ -57,7 +57,6 @@ int LibretroHost::loadCore(const std::string& corePath) {
     retro_run_fn = (void (*)())dlsym(coreLib_, "retro_run");
     retro_load_game_fn = (bool (*)(const struct retro_game_info*))dlsym(coreLib_, "retro_load_game");
     retro_unload_game_fn = (void (*)())dlsym(coreLib_, "retro_unload_game");
-    retro_get_system_av_info_fn = (void (*)(struct retro_system_av_info*))dlsym(coreLib_, "retro_get_system_av_info");
     retro_set_environment_fn = (void (*)(retro_environment_t))dlsym(coreLib_, "retro_set_environment");
     retro_set_video_refresh_fn = (void (*)(retro_video_refresh_t))dlsym(coreLib_, "retro_set_video_refresh");
     retro_set_audio_sample_fn = (void (*)(retro_audio_sample_t))dlsym(coreLib_, "retro_set_audio_sample");
@@ -153,13 +152,11 @@ bool LibretroHost::envCallback(unsigned cmd, void* data) {
             *(bool*)data = true;
             return true;
         case RETRO_ENVIRONMENT_SET_PIXEL_FORMAT:
-            return true;
         case RETRO_ENVIRONMENT_SET_VARIABLES:
-            return true;
         case RETRO_ENVIRONMENT_SET_SUPPORT_NO_GAME:
             return true;
         case RETRO_ENVIRONMENT_GET_LOG_INTERFACE: {
-            struct retro_log_callback *cb = (struct retro_log_callback *)data;
+            auto* cb = reinterpret_cast<struct retro_log_callback*>(data);
             cb->log = libretroLog;
             return true;
         }
@@ -169,6 +166,23 @@ bool LibretroHost::envCallback(unsigned cmd, void* data) {
         case RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY:
             *(const char **)data = host.saveDir_.empty() ? nullptr : host.saveDir_.c_str();
             return true;
+        case RETRO_ENVIRONMENT_GET_VARIABLE: {
+            auto* var = static_cast<struct retro_variable*>(data);
+            if (!var || !var->key) return false;
+
+            std::string key = var->key;
+            if (host.coreType_ == CoreType::AMIGA) {
+                if (key == "puae_model") {
+                    var->value = "A500";
+                    return true;
+                }
+                if (key == "puae_video_standard") {
+                    var->value = "PAL";
+                    return true;
+                }
+            }
+            return false;
+        }
         default:
             return false;
     }
@@ -190,8 +204,8 @@ void LibretroHost::videoCallback(const void* data, unsigned width, unsigned heig
     ANativeWindow_Buffer buffer;
     if (ANativeWindow_lock(host.window_, &buffer, nullptr) != 0) return;
 
-    uint32_t* dst = static_cast<uint32_t*>(buffer.bits);
-    const uint16_t* src = static_cast<const uint16_t*>(data);
+    auto* dst = static_cast<uint32_t*>(buffer.bits);
+    auto* src = static_cast<const uint16_t*>(data);
 
     int dstW = buffer.width;
     int dstH = buffer.height;
@@ -207,24 +221,24 @@ void LibretroHost::videoCallback(const void* data, unsigned width, unsigned heig
     }
 
     // 2. Calculate aspect-ratio-preserving scale
-    float scaleX = static_cast<float>(dstW) / srcW;
-    float scaleY = static_cast<float>(dstH) / srcH;
+    float scaleX = static_cast<float>(dstW) / static_cast<float>(srcW);
+    float scaleY = static_cast<float>(dstH) / static_cast<float>(srcH);
     float scale = std::min(scaleX, scaleY);   // use std::max if you want stretch-to-fill
 
-    int drawW = static_cast<int>(srcW * scale);
-    int drawH = static_cast<int>(srcH * scale);
+    int drawW = static_cast<int>(static_cast<float>(srcW) * scale);
+    int drawH = static_cast<int>(static_cast<float>(srcH) * scale);
     int offsetX = (dstW - drawW) / 2;
     int offsetY = (dstH - drawH) / 2;
 
     // 3. Nearest-neighbor blit
     for (int y = 0; y < drawH; y++) {
-        int srcY = static_cast<int>(y / scale);
+        int srcY = static_cast<int>(static_cast<float>(y) / scale);
         if (srcY >= srcH) srcY = srcH - 1;
         const uint16_t* src_row = src + srcY * (pitch / 2);
         uint32_t* dst_row = dst + (y + offsetY) * buffer.stride + offsetX;
 
         for (int x = 0; x < drawW; x++) {
-            int srcX = static_cast<int>(x / scale);
+            int srcX = static_cast<int>(static_cast<float>(x) / scale);
             if (srcX >= srcW) srcX = srcW - 1;
             uint16_t px = src_row[srcX];
 
@@ -266,7 +280,8 @@ extern "C" int PCSX_Run(const char* bios, const char* disc, const char* saveDir)
     LOGI("Bridge: PCSX_Run called for %s", disc);
     auto& host = LibretroHost::getInstance();
     host.stop();
-    host.setSystemDir("/sdcard/RetroRTS/system/ps1");
+    host.setCoreType(CoreType::PS1);
+    host.setSystemDir("/storage/emulated/0/RetroRTS/system/ps1");
     if (saveDir) host.setSaveDir(saveDir);
 
     if (host.loadCore("libpcsx_rearmed_libretro.so") != 0) {
@@ -278,17 +293,19 @@ extern "C" int PCSX_Run(const char* bios, const char* disc, const char* saveDir)
     return 0;
 }
 
-extern "C" int uae_init(const char* config_path) {
-    LOGI("Bridge: uae_init called for %s", config_path);
+extern "C" int uae_init(const char* rom_path) {
+    LOGI("Bridge: uae_init called for %s", rom_path);
     auto& host = LibretroHost::getInstance();
     host.stop();
-    host.setSystemDir("/sdcard/RetroRTS/system/amiga");
-    host.setSaveDir("/sdcard/RetroRTS/Saves/Amiga");
+    host.setCoreType(CoreType::AMIGA);
+    host.setSystemDir("/storage/emulated/0/RetroRTS/system/amiga");
+    host.setSaveDir("/storage/emulated/0/RetroRTS/Saves/Amiga");
 
     if (host.loadCore("libpuae_libretro.so") != 0) {
         if (host.loadCore("libpuae.so") != 0) return -1;
     }
-    if (host.loadGame(config_path) != 0) return -2;
+    // Pass the ADF directly — the core handles kickstart detection
+    if (host.loadGame(rom_path) != 0) return -2;
 
     std::thread([&host]() { host.runLoop(); }).detach();
     return 0;
@@ -298,7 +315,8 @@ extern "C" int dosbox_init(const char* config_path, const char* saveDir) {
     LOGI("Bridge: dosbox_init called for %s", config_path);
     auto& host = LibretroHost::getInstance();
     host.stop();
-    host.setSystemDir("/sdcard/RetroRTS/system/dosbox");
+    host.setCoreType(CoreType::DOSBOX);
+    host.setSystemDir("/storage/emulated/0/RetroRTS/system/dosbox");
     if (saveDir) host.setSaveDir(saveDir);
 
     if (host.loadCore("libdosbox_pure_libretro.so") != 0) {

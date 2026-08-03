@@ -10,8 +10,7 @@
 
 namespace retrorts::amiga {
 
-constexpr const char* kBiosDir = "/sdcard/RetroRTS/system/amiga";
-constexpr const char* kGamesDir = "/sdcard/RetroRTS/Games/Amiga";
+constexpr const char* kBiosDir = "/storage/emulated/0/RetroRTS/system/amiga";
 
 bool fileExists(const std::string& p) {
     return std::ifstream(p, std::ios::binary).good();
@@ -38,12 +37,16 @@ std::string selectKickstartRom(const std::string& gamePath) {
     // Dune II works best with Kickstart 1.3 or 3.1
     // Try in order of preference
     const char* kickstarts[] = {
-        "kick13.rom",  // Kickstart 1.3 (most compatible for classic games)
-        "kick31.rom",  // Kickstart 3.1 (AGA support)
-        "kick12.rom",  // Kickstart 1.2
-        "kick20.rom",  // Kickstart 2.0
-        "kick30.rom",  // Kickstart 3.0
-        "kick40.rom",  // Kickstart 4.0
+        "kick13.rom",      // Kickstart 1.3 (most compatible for classic games)
+        "kick34005.A500",  // Official PUAE name for 1.3
+        "kick31.rom",      // Kickstart 3.1 (AGA support)
+        "kick40068.A1200", // Official PUAE name for 3.1
+        "kick12.rom",      // Kickstart 1.2
+        "kick33180.A500",  // Official PUAE name for 1.2
+        "kick20.rom",      // Kickstart 2.0
+        "kick37175.A500",  // Official PUAE name for 2.04
+        "kick30.rom",      // Kickstart 3.0
+        "kick40.rom",      // Kickstart 4.0
         nullptr
     };
 
@@ -78,67 +81,6 @@ bool isValidAmigaDiskImage(const std::string& path) {
     return true;
 }
 
-// Generate a UAE config for running Amiga games
-std::string generateUaeConfig(const std::string& gamePath, const std::string& biosPath) {
-    std::string gameDir = gamePath.substr(0, gamePath.rfind('/') + 1);
-    std::string gameFile = gamePath.substr(gamePath.rfind('/') + 1);
-    std::string e = ext(gamePath);
-
-    // Build UAE configuration
-    std::string config = R"([general]
-fullscreen=false
-width=640
-height=512
-amiga_model=A500
-cpu_speed=fastest
-cpu_type=68000
-fpu_type=none
-chipset=ocs
-chipram=2
-fastram=0
-bogomem=0
-z3fastram=0
-
-[display]
-framerate=50
-vsync=true
-linemode=scanlines
-aspect=true
-
-[sound]
-sound=true
-frequency=44100
-channels=2
-volume=100
-
-[input]
-joystick_type=automatic
-mouse_speed=100
-
-[harddrives]
-)";
-
-    // Add disk configuration
-    if (e == ".adf") {
-        config += "floppy0=" + gamePath + "\n";
-        config += "floppy0type=3.5_DD\n";  // 3.5" double density
-    } else if (e == ".hdf" || e == ".dms") {
-        config += "hardfile0=" + gamePath + "\n";
-    }
-
-    config += R"(
-[cpu]
-cpu_cycle_exact=false
-cpu_compatible=true
-
-[blitter]
-blitter_cycle_exact=false
-blitter_compatible=true
-)";
-
-    return config;
-}
-
 AmigaLaunchResult LaunchAmigaGame(const std::string& romPath) {
     if (romPath.empty())
         return {false, "Amiga launch failed: empty ROM path", "", ""};
@@ -165,18 +107,7 @@ AmigaLaunchResult LaunchAmigaGame(const std::string& romPath) {
             "", ""};
     }
 
-    // Validate Kickstart ROM size (should be 262144 bytes for 256KB or 524288 for 512KB)
-    long biosSize = fileSize(biosPath);
-    if (biosSize != 262144L && biosSize != 524288L) {
-        LOGI("Warning: Kickstart ROM size is %ld (expected 262144 or 524288)", biosSize);
-        // Don't fail, as some variants may have different sizes
-    }
-
-    // Generate UAE configuration
-    std::string uaeConfig = generateUaeConfig(romPath, biosPath);
-
-    LOGI("Amiga ready: rom=%s bios=%s config_size=%zu", 
-         romPath.c_str(), biosPath.c_str(), uaeConfig.size());
+    LOGI("Amiga ready: rom=%s bios=%s", romPath.c_str(), biosPath.c_str());
 
     return {true, 
             "Amiga core ready for " + romPath + " using " + biosPath,

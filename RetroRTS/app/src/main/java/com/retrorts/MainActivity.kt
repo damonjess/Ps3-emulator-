@@ -1,14 +1,10 @@
 package com.retrorts
 
 import android.content.Context
-import android.annotation.SuppressLint
 import android.media.AudioAttributes
 import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.content.Intent
-import android.app.DownloadManager
-import android.content.BroadcastReceiver
-import android.content.IntentFilter
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.InstallMobile
 import android.net.Uri
@@ -29,6 +25,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.ActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -248,7 +245,7 @@ class MainActivity : ComponentActivity() {
             runCatching {
                 val phm = getSystemService(PerformanceHintManager::class.java)
                 // Hint that we are targeting 60fps (16.6ms per frame)
-                val session = phm?.createHintSession(intArrayOf(android.os.Process.myTid()), 16666666L)
+                phm?.createHintSession(intArrayOf(android.os.Process.myTid()), 16666666L)
                 // MagicOS will now prioritize our threads to prevent frame drops
             }
         }
@@ -272,8 +269,7 @@ data class LaunchResult(val started: Boolean, val message: String)
 
 private suspend fun launchGameWithNativeBackend(
     context: Context,
-    game: GameEntry,
-    settings: SettingsState
+    game: GameEntry
 ): LaunchResult = withContext(Dispatchers.IO) {
     if (!DosboxBridge.isAvailable) {
         return@withContext LaunchResult(false, "Native library not loaded. Check NDK build.")
@@ -287,6 +283,15 @@ private suspend fun launchGameWithNativeBackend(
         }
 
         val started = DosboxBridge.startDosbox(game.filePath, configPath)
+        if (started) {
+            runCatching {
+                val file = File(game.filePath)
+                if (file.exists()) {
+                    file.setExecutable(true)
+                    file.setReadable(true)
+                }
+            }
+        }
         return@withContext if (started) {
             LaunchResult(true, "OK: DOSBox started")
         } else {
@@ -301,9 +306,20 @@ private suspend fun launchGameWithNativeBackend(
     val result = NativeEmulatorBridge.launchGame(
         context  = context,
         console  = game.consoleType.name,   // "PS1", "DOSBOX", etc.
-        romPath  = game.filePath,
-        settings = settings
+        romPath  = game.filePath
     )
+    
+    // Auto-fix permissions if launch succeeded but it might have been flaky
+    if (result.started) {
+        runCatching {
+            val file = File(game.filePath)
+            if (file.exists()) {
+                file.setExecutable(true)
+                file.setReadable(true)
+            }
+        }
+    }
+    
     LaunchResult(result.started, result.message)
 }
 
@@ -328,7 +344,7 @@ private fun RootApp(
     hasStoragePermission: () -> Boolean,
     onRequestStorage: () -> Unit
 ) {
-    val context = androidx.compose.ui.platform.LocalContext.current
+    val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var screen by remember { mutableStateOf(AppScreen.SPLASH) }
     var settings by remember { mutableStateOf(SettingsState()) }
@@ -402,11 +418,11 @@ private fun RootApp(
     when (screen) {
         AppScreen.SPLASH -> SplashScreen()
         AppScreen.NEEDS_PERMISSION -> PermissionScreen(onRequestStorage)
-        AppScreen.GAME -> activeGame?.let { DosboxPlayScreen(it, settings) { DosboxBridge.stopDosbox(); onAbandonAudioFocus(); activeGame = null; screen = AppScreen.HOME } }
+        AppScreen.GAME -> activeGame?.let { DosboxPlayScreen(it) { DosboxBridge.stopDosbox(); onAbandonAudioFocus(); activeGame = null; screen = AppScreen.HOME } }
         AppScreen.HOME -> LauncherScreen(settings, onSettings = { /* settings are now inline — no screen change needed */ }, onAbout = { showAbout = true }, onLaunch = { game ->
             isLaunching = true
             scope.launch {
-                val result = launchGameWithNativeBackend(context, game, settings)
+                val result = launchGameWithNativeBackend(context, game)
                 isLaunching = false
                 if (result.started) {
                     onRequestAudioFocus()
@@ -425,7 +441,7 @@ private fun RootApp(
 
 @Composable
 private fun PermissionScreen(onRequest: () -> Unit) {
-    val context = androidx.compose.ui.platform.LocalContext.current
+    val context = LocalContext.current
     val storageOk = (context as? MainActivity)?.hasStoragePermission() ?: false
 
     Box(
@@ -1064,14 +1080,14 @@ private fun SettingsTab(
             // Inline settings sliders (no separate screen needed)
             var s by remember { mutableStateOf(settings) }
 
-            SettingRow("Display Scaling", "${"%.2f".format(s.displayScale)}") {
+            SettingRow("Display Scaling", "%.2f".format(s.displayScale)) {
                 Slider(
                     value = s.displayScale,
                     onValueChange = { s = s.copy(displayScale = it); onSettings() },
                     valueRange = 0.5f..1.5f
                 )
             }
-            SettingRow("Control Sensitivity", "${"%.2f".format(s.sensitivity)}") {
+            SettingRow("Control Sensitivity", "%.2f".format(s.sensitivity)) {
                 Slider(
                     value = s.sensitivity,
                     onValueChange = { s = s.copy(sensitivity = it) },
@@ -1141,11 +1157,11 @@ private fun StoragePath(label: String, path: String) {
 
 
 @Composable
-private fun DosboxPlayScreen(game: GameEntry, settings: SettingsState, onExit: () -> Unit) {
+private fun DosboxPlayScreen(game: GameEntry, onExit: () -> Unit) {
     var showExitDialog by remember { mutableStateOf(false) }
     var saveSlot by remember { mutableStateOf(1) }
     var statusMsg by remember { mutableStateOf("") }
-    val context = androidx.compose.ui.platform.LocalContext.current
+    val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
     // Live perf stats — poll every second
@@ -1154,16 +1170,19 @@ private fun DosboxPlayScreen(game: GameEntry, settings: SettingsState, onExit: (
     
     // Auto-detect high refresh rate
     LaunchedEffect(Unit) {
-        val window = (context as? android.app.Activity)?.window
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            val maxRefresh = context.display?.supportedModes?.maxByOrNull { it.refreshRate }?.refreshRate ?: 60f
+            val maxRefresh = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            context.display?.supportedModes?.maxByOrNull { it.refreshRate }?.refreshRate ?: 60f
+        } else {
+            60f
+        }
             if (maxRefresh > 60f) {
                 DosboxBridge.setFrameCap(maxRefresh.toInt())
             }
         }
 
         while (true) {
-            delay(1000L)
+            delay(1000L) // Polling interval
             val stats = DosboxBridge.getPerfStats()
             fps    = stats.getOrElse(0) { 0f }
             cpuPct = stats.getOrElse(1) { 0f }
@@ -1282,7 +1301,7 @@ private fun DosboxPlayScreen(game: GameEntry, settings: SettingsState, onExit: (
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                RtsOverlay(settings, Modifier.weight(1f), onExit)
+                RtsOverlay(Modifier.weight(1f), onExit)
             }
         }
     }
@@ -1291,7 +1310,7 @@ private fun DosboxPlayScreen(game: GameEntry, settings: SettingsState, onExit: (
 // Keep RtsOverlay as before but remove the outer Box that filled the whole
 // screen — it now lives inside the bottom toolbar row:
 @Composable
-private fun RtsOverlay(settings: SettingsState, modifier: Modifier, onExit: () -> Unit) {
+private fun RtsOverlay(modifier: Modifier, onExit: () -> Unit) {
     Row(
         modifier = modifier.padding(4.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),

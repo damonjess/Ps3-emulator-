@@ -23,13 +23,12 @@ object AmigaBridge {
      * Start the Amiga emulator with a game disk image.
      * 
      * @param gamePath Full path to the Amiga game disk image (.adf, .hdf, .dms)
-     * @param configPath Path to the generated UAE configuration file
      * @return true if emulator started successfully
      */
-    fun startAmiga(gamePath: String, configPath: String): Boolean {
+    fun startAmiga(gamePath: String): Boolean {
         if (!nativeLoaded) return false
         return runCatching {
-            startAmigaNative(gamePath, configPath)
+            startAmigaNative(gamePath)
         }.getOrDefault(false)
     }
 
@@ -68,7 +67,7 @@ object AmigaBridge {
     }
 
     // JNI function declarations
-    @JvmStatic private external fun startAmigaNative(gamePath: String, configPath: String): Boolean
+    @JvmStatic private external fun startAmigaNative(gamePath: String): Boolean
     @JvmStatic private external fun stopAmigaNative()
     @JvmStatic private external fun isRunningNative(): Boolean
     @JvmStatic private external fun updateInputNative(port: Int, buttonMask: Int)

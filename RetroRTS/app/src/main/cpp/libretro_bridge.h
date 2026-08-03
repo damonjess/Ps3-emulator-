@@ -8,6 +8,8 @@
 
 namespace retrorts {
 
+enum class CoreType { NONE, PS1, AMIGA, DOSBOX };
+
 class LibretroHost {
 public:
     static LibretroHost& getInstance();
@@ -18,10 +20,10 @@ public:
     void stop();
 
     void setWindow(ANativeWindow* window);
-    bool isRunning() const { return running_; }
 
     void setSystemDir(const std::string& dir) { systemDir_ = dir; }
     void setSaveDir(const std::string& dir) { saveDir_ = dir; }
+    void setCoreType(CoreType type) { coreType_ = type; }
 
     static bool envCallback(unsigned cmd, void* data);
     static void videoCallback(const void* data, unsigned width, unsigned height, size_t pitch);
@@ -41,13 +43,13 @@ private:
 
     std::string systemDir_;
     std::string saveDir_;
+    CoreType coreType_ = CoreType::NONE;
 
     void (*retro_init_fn)() = nullptr;
     void (*retro_deinit_fn)() = nullptr;
     void (*retro_run_fn)() = nullptr;
     bool (*retro_load_game_fn)(const struct retro_game_info*) = nullptr;
     void (*retro_unload_game_fn)() = nullptr;
-    void (*retro_get_system_av_info_fn)(struct retro_system_av_info*) = nullptr;
     void (*retro_set_environment_fn)(retro_environment_t) = nullptr;
     void (*retro_set_video_refresh_fn)(retro_video_refresh_t) = nullptr;
     void (*retro_set_audio_sample_fn)(retro_audio_sample_t) = nullptr;
@@ -58,7 +60,7 @@ private:
 
 extern "C" {
     int PCSX_Run(const char* bios, const char* disc, const char* saveDir);
-    int uae_init(const char* config_path);
+    int uae_init(const char* rom_path);
     int dosbox_init(const char* config_path, const char* saveDir);
 }
 

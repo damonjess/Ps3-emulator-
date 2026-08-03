@@ -33,6 +33,7 @@ class BridgeAndValidationTest {
     @Test
     fun `native bridges fail gracefully when library is unavailable in unit tests`() {
         assertFalse(DosboxBridge.startDosbox("/sdcard/RetroRTS/Games/Dune2000", ""))
-        assertTrue(NativeEmulatorBridge.launchGame("NINTENDO_DSI", "/missing/game.nds").startsWith("ERROR:"))
+        val result = NativeEmulatorBridge.launchGame("NINTENDO_DSI", "/missing/game.nds")
+        assertTrue(result.message.contains("unavailable") || result.message.startsWith("ERROR"))
     }
 }

@@ -196,6 +196,9 @@ enum class ConsoleType {
     companion object {
         fun detect(filePath: String): ConsoleType {
             val n = filePath.lowercase()
+            val file = java.io.File(filePath)
+            val parentName = file.parentFile?.name?.lowercase() ?: ""
+
             return when {
                 n.endsWith(".nds") || n.endsWith(".dsi") || n.endsWith(".srl")
                     -> NINTENDO_DSI
@@ -204,8 +207,15 @@ enum class ConsoleType {
                 n.endsWith(".bin") || n.endsWith(".cue") || n.endsWith(".img")
                     -> PS1
                 n.endsWith(".iso") -> {
-                    val file = java.io.File(filePath)
                     if (file.exists() && file.length() > 700 * 1024 * 1024) PS2 else PS1
+                }
+                // Heuristic for extensionless files
+                !file.name.contains(".") -> {
+                    when {
+                        parentName == "amiga" || n.contains("/amiga/") -> AMIGA
+                        parentName == "dsi" || n.contains("/dsi/") -> NINTENDO_DSI
+                        else -> DOSBOX
+                    }
                 }
                 else -> DOSBOX
             }
@@ -248,7 +258,7 @@ object GameProfileStore {
     private fun gameIdForName(key: String): String = when {
         "red alert" in key || "command" in key || "c&c" in key -> "cnc_red_alert_win95"
         "dune 2000" in key -> "dune_2000_win98"
-        "dune ii" in key || "dune 2" in key -> "dune_ii_amiga"
+        "dune ii" in key || "dune 2" in key || key == "dune" -> "dune_ii_amiga"
         "amiga" in key || "a500" in key -> "amiga_a500_demo"
         "dsi" in key || "nintendo ds" in key -> "nintendo_dsi_demo"
         "ps1" in key || "playstation" in key || "psx" in key -> "ps1_game_demo"
