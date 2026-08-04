@@ -40,9 +40,14 @@ object NativeEmulatorBridge {
         if (nativeLoaded) runCatching { setSaveDirNative(dir) }
     }
 
+    fun sendKeyString(text: String) {
+        if (nativeLoaded) runCatching { sendKeyStringNative(text) }
+    }
+
     @JvmStatic private external fun launchGameNative(console: String, romPath: String, cacheDir: String, saveDir: String): String
     @JvmStatic private external fun setSurfaceNative(surface: android.view.Surface?)
     @JvmStatic private external fun setCoreDirNative(coreDir: String)
     @JvmStatic private external fun setSystemDirNative(systemDir: String)
     @JvmStatic private external fun setSaveDirNative(saveDir: String)
+    @JvmStatic private external fun sendKeyStringNative(text: String)
 }

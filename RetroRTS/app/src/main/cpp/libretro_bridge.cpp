@@ -6,6 +6,7 @@
 #include <android/native_window_jni.h>
 #include <algorithm>
 #include <cstdarg>
+#include <set>
 
 #define LOG_TAG "LibretroBridge"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO,  LOG_TAG, __VA_ARGS__)
@@ -82,7 +83,42 @@ int LibretroHost::loadCore(const std::string& corePath) {
 
     retro_init_fn();
     LOGI("Core initialized");
+    keyboard_cb_ = nullptr;
     return 0;
+}
+
+void LibretroHost::sendKeyString(const std::string& text) {
+    std::lock_guard<std::recursive_mutex> lock(coreMutex_);
+    if (!keyboard_cb_) {
+        LOGE("sendKeyString: No keyboard callback registered by core!");
+        return;
+    }
+
+    LOGI("sendKeyString: Sending '%s'", text.c_str());
+
+    for (char c : text) {
+        unsigned keycode = RETROK_UNKNOWN;
+        uint32_t character = static_cast<uint32_t>(c);
+
+        if (c >= 'a' && c <= 'z') keycode = RETROK_a + (c - 'a');
+        else if (c >= 'A' && c <= 'Z') keycode = RETROK_a + (c - 'A'); // libretro keys are lowercase
+        else if (c >= '0' && c <= '9') keycode = RETROK_0 + (c - '0');
+        else if (c == ' ') keycode = RETROK_SPACE;
+        else if (c == '\n' || c == '\r') keycode = RETROK_RETURN;
+        else if (c == '.') keycode = RETROK_PERIOD;
+        else if (c == '/') keycode = RETROK_SLASH;
+        else if (c == '+') keycode = RETROK_PLUS;
+        else if (c == '-') keycode = RETROK_MINUS;
+        else if (c == '_') keycode = RETROK_UNDERSCORE;
+        else if (c == ':') keycode = RETROK_COLON;
+        else if (c == ';') keycode = RETROK_SEMICOLON;
+
+        if (keycode != RETROK_UNKNOWN) {
+            std::lock_guard<std::mutex> qlock(queueMutex_);
+            keyEventQueue_.push_back({true, keycode, character});
+            keyEventQueue_.push_back({false, keycode, character});
+        }
+    }
 }
 
 int LibretroHost::loadGame(const std::string& romPath) {
@@ -106,6 +142,20 @@ void LibretroHost::runLoop() {
     while (running_.load()) {
         {
             std::lock_guard<std::recursive_mutex> lock(coreMutex_);
+
+            // Process keyboard queue
+            if (keyboard_cb_) {
+                std::lock_guard<std::mutex> qlock(queueMutex_);
+                if (!keyEventQueue_.empty()) {
+                    // Process 2 events per frame (Down + Up for one char)
+                    for (int i = 0; i < 2 && !keyEventQueue_.empty(); ++i) {
+                        auto& ev = keyEventQueue_.front();
+                        keyboard_cb_(ev.down, ev.keycode, ev.character, 0);
+                        keyEventQueue_.erase(keyEventQueue_.begin());
+                    }
+                }
+            }
+
             if (retro_run_fn) retro_run_fn();
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
@@ -155,6 +205,18 @@ bool LibretroHost::envCallback(unsigned cmd, void* data) {
         case RETRO_ENVIRONMENT_SET_VARIABLES:
         case RETRO_ENVIRONMENT_SET_SUPPORT_NO_GAME:
             return true;
+        case RETRO_ENVIRONMENT_SET_KEYBOARD_CALLBACK: {
+            LOGI("envCallback: Core requested RETRO_ENVIRONMENT_SET_KEYBOARD_CALLBACK");
+            const struct retro_keyboard_callback *cb = (const struct retro_keyboard_callback*)data;
+            host.keyboard_cb_ = cb->callback;
+            return true;
+        }
+        case RETRO_ENVIRONMENT_GET_INPUT_DEVICE_CAPABILITIES: {
+            LOGI("envCallback: Core requested RETRO_ENVIRONMENT_GET_INPUT_DEVICE_CAPABILITIES");
+            uint64_t *mask = (uint64_t*)data;
+            *mask = (1ULL << RETRO_DEVICE_JOYPAD) | (1ULL << RETRO_DEVICE_KEYBOARD);
+            return true;
+        }
         case RETRO_ENVIRONMENT_GET_LOG_INTERFACE: {
             auto* cb = reinterpret_cast<struct retro_log_callback*>(data);
             cb->log = libretroLog;
@@ -181,9 +243,14 @@ bool LibretroHost::envCallback(unsigned cmd, void* data) {
                     return true;
                 }
             }
-            return false;
+            return true;
         }
         default:
+            static std::set<unsigned> logged_cmds;
+            if (logged_cmds.find(cmd) == logged_cmds.end()) {
+                LOGI("envCallback: Core requested unknown cmd %u", cmd);
+                logged_cmds.insert(cmd);
+            }
             return false;
     }
 }

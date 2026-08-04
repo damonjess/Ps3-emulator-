@@ -44,6 +44,7 @@ import androidx.compose.material.icons.filled.SportsEsports
 import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -283,15 +284,6 @@ private suspend fun launchGameWithNativeBackend(
         }
 
         val started = DosboxBridge.startDosbox(game.filePath, configPath)
-        if (started) {
-            runCatching {
-                val file = File(game.filePath)
-                if (file.exists()) {
-                    file.setExecutable(true)
-                    file.setReadable(true)
-                }
-            }
-        }
         return@withContext if (started) {
             LaunchResult(true, "OK: DOSBox started")
         } else {
@@ -308,17 +300,6 @@ private suspend fun launchGameWithNativeBackend(
         console  = game.consoleType.name,   // "PS1", "DOSBOX", etc.
         romPath  = game.filePath
     )
-    
-    // Auto-fix permissions if launch succeeded but it might have been flaky
-    if (result.started) {
-        runCatching {
-            val file = File(game.filePath)
-            if (file.exists()) {
-                file.setExecutable(true)
-                file.setReadable(true)
-            }
-        }
-    }
     
     LaunchResult(result.started, result.message)
 }
@@ -1159,6 +1140,8 @@ private fun StoragePath(label: String, path: String) {
 @Composable
 private fun DosboxPlayScreen(game: GameEntry, onExit: () -> Unit) {
     var showExitDialog by remember { mutableStateOf(false) }
+    var showKeyboardDialog by remember { mutableStateOf(false) }
+    var keyboardText by remember { mutableStateOf("") }
     var saveSlot by remember { mutableStateOf(1) }
     var statusMsg by remember { mutableStateOf("") }
     val context = LocalContext.current
@@ -1197,6 +1180,33 @@ private fun DosboxPlayScreen(game: GameEntry, onExit: () -> Unit) {
             confirmButton    = { Button({ onExit() }) { Text("Exit") } },
             dismissButton    = { Button({ showExitDialog = false }) { Text("Cancel") } },
             text             = { Text("Exit game session? Unsaved progress will be lost.") }
+        )
+    }
+
+    if (showKeyboardDialog) {
+        AlertDialog(
+            onDismissRequest = { showKeyboardDialog = false },
+            confirmButton = {
+                Button({
+                    android.util.Log.i("RetroRTS", "Sending keyboard text: $keyboardText")
+                    NativeEmulatorBridge.sendKeyString(keyboardText + "\n")
+                    keyboardText = ""
+                    showKeyboardDialog = false
+                }) { Text("Send") }
+            },
+            dismissButton = {
+                Button({ showKeyboardDialog = false }) { Text("Cancel") }
+            },
+            title = { Text("Virtual Keyboard") },
+            text = {
+                TextField(
+                    value = keyboardText,
+                    onValueChange = { keyboardText = it },
+                    placeholder = { Text("Type command...") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
         )
     }
 
@@ -1301,7 +1311,9 @@ private fun DosboxPlayScreen(game: GameEntry, onExit: () -> Unit) {
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                RtsOverlay(Modifier.weight(1f), onExit)
+                RtsOverlay(Modifier.weight(1f), onExit) {
+                    showKeyboardDialog = true
+                }
             }
         }
     }
@@ -1310,7 +1322,7 @@ private fun DosboxPlayScreen(game: GameEntry, onExit: () -> Unit) {
 // Keep RtsOverlay as before but remove the outer Box that filled the whole
 // screen — it now lives inside the bottom toolbar row:
 @Composable
-private fun RtsOverlay(modifier: Modifier, onExit: () -> Unit) {
+private fun RtsOverlay(modifier: Modifier, onExit: () -> Unit, onKeyboard: () -> Unit) {
     Row(
         modifier = modifier.padding(4.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -1318,6 +1330,13 @@ private fun RtsOverlay(modifier: Modifier, onExit: () -> Unit) {
     ) {
         Button(onClick = {}) { Text("L") }
         Button(onClick = {}) { Text("R") }
+        Button(
+            onClick = onKeyboard,
+            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3A3A3A)),
+            contentPadding = PaddingValues(horizontal = 8.dp)
+        ) {
+            Icon(Icons.Filled.Keyboard, contentDescription = "Keyboard", tint = Color.White)
+        }
         Spacer(Modifier.weight(1f))
         Button(
             onClick = onExit,

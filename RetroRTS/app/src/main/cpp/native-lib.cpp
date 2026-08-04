@@ -56,3 +56,13 @@ Java_com_retrorts_ui_NativeEmulatorBridge_setSaveDirNative(JNIEnv* env, jclass, 
         env->ReleaseStringUTFChars(saveDir, cDir);
     }
 }
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_retrorts_ui_NativeEmulatorBridge_sendKeyStringNative(JNIEnv* env, jclass, jstring text) {
+    if (text == nullptr) return;
+    const char* cText = env->GetStringUTFChars(text, nullptr);
+    if (cText) {
+        retrorts::LibretroHost::getInstance().sendKeyString(cText);
+        env->ReleaseStringUTFChars(text, cText);
+    }
+}

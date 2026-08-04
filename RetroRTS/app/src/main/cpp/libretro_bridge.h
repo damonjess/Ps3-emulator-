@@ -3,6 +3,7 @@
 #include <string>
 #include <atomic>
 #include <mutex>
+#include <vector>
 #include <android/native_window.h>
 #include "libretro.h"
 
@@ -18,6 +19,8 @@ public:
     int loadGame(const std::string& romPath);
     void runLoop();
     void stop();
+
+    void sendKeyString(const std::string& text);
 
     void setWindow(ANativeWindow* window);
 
@@ -44,6 +47,15 @@ private:
     std::string systemDir_;
     std::string saveDir_;
     CoreType coreType_ = CoreType::NONE;
+    retro_keyboard_event_t keyboard_cb_ = nullptr;
+
+    struct KeyboardEvent {
+        bool down;
+        unsigned keycode;
+        uint32_t character;
+    };
+    std::vector<KeyboardEvent> keyEventQueue_;
+    std::mutex queueMutex_;
 
     void (*retro_init_fn)() = nullptr;
     void (*retro_deinit_fn)() = nullptr;
