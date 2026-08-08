@@ -141,8 +141,14 @@ if exist dune.bat dune.bat
     // ── NINTENDO DSi ─────────────────────────────────────────────────────
     else if (c == "NINTENDO_DSI" || c == "DSI") {
         auto result = retrorts::dsi::LaunchDsiGame(romPath);
-        return result.ok ? "OK: " + result.message
-                         : "ERROR: " + result.message;
+        if (!result.ok) return "ERROR: " + result.message;
+
+        int r = retrorts::dsi_init(romPath.c_str());
+        if (r != 0) {
+            return "ERROR: Nintendo DSi core initialization failed with code " + std::to_string(r);
+        }
+
+        return "OK: " + result.message;
     }
 
     // ── AUTO-DETECT fallback ─────────────────────────────────────────────

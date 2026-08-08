@@ -74,9 +74,10 @@ object GameLibrary {
                 val ext = file.extension.lowercase()
                 val isExtensionless = !file.name.contains(".")
                 
-                // Recognize extensionless files if in a specific console folder
+                // Recognize extensionless files if in a specific console folder (DOS/DSi)
+                // Amiga games should almost always be .adf, .hdf, or .dms images.
                 val isConsoleFolder = file.absolutePath.lowercase().let { 
-                    it.contains("/amiga/") || it.contains("/dosbox/") || it.contains("/dsi/")
+                    it.contains("/dosbox/") || it.contains("/dsi/")
                 }
 
                 if (file.isFile && (ext in validExts || (isExtensionless && isConsoleFolder))) {

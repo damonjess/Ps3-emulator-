@@ -1,5 +1,6 @@
 #include <jni.h>
 #include <string>
+#include <android/native_window_jni.h>
 #include "emulator_core.h"
 #include "libretro_bridge.h"
 

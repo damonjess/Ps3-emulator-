@@ -121,6 +121,12 @@ void LibretroHost::sendKeyString(const std::string& text) {
     }
 }
 
+void LibretroHost::updateJoypad(int port, uint16_t state) {
+    if (port >= 0 && port < 2) {
+        padState_[port].store(state);
+    }
+}
+
 int LibretroHost::loadGame(const std::string& romPath) {
     std::lock_guard<std::recursive_mutex> lock(coreMutex_);
     if (!coreLib_ || !retro_load_game_fn) return -1;
@@ -340,6 +346,10 @@ void LibretroHost::inputPollCallback() {
 }
 
 int16_t LibretroHost::inputStateCallback(unsigned port, unsigned device, unsigned index, unsigned id) {
+    auto& host = getInstance();
+    if (port < 2 && device == RETRO_DEVICE_JOYPAD) {
+        return (host.padState_[port].load() & (1 << id)) ? 1 : 0;
+    }
     return 0;
 }
 
@@ -352,7 +362,7 @@ extern "C" int PCSX_Run(const char* bios, const char* disc, const char* saveDir)
     if (saveDir) host.setSaveDir(saveDir);
 
     if (host.loadCore("libpcsx_rearmed_libretro.so") != 0) {
-        if (host.loadCore("libpcsx_rearmed.so") != 0) return -1;
+        if (host.loadCore("libpcsx_rearmed.so") != 0) return -10;
     }
     if (host.loadGame(disc) != 0) return -2;
 
@@ -390,6 +400,23 @@ extern "C" int dosbox_init(const char* config_path, const char* saveDir) {
         if (host.loadCore("libdosbox_pure.so") != 0) return -1;
     }
     if (host.loadGame(config_path) != 0) return -2;
+
+    std::thread([&host]() { host.runLoop(); }).detach();
+    return 0;
+}
+
+extern "C" int dsi_init(const char* rom_path) {
+    LOGI("Bridge: dsi_init called for %s", rom_path);
+    auto& host = LibretroHost::getInstance();
+    host.stop();
+    host.setCoreType(CoreType::NINTENDO_DSI);
+    host.setSystemDir("/storage/emulated/0/RetroRTS/system/dsi");
+    host.setSaveDir("/storage/emulated/0/RetroRTS/Saves/DSi");
+
+    if (host.loadCore("libmelonds_libretro.so") != 0) {
+        if (host.loadCore("libmelonds.so") != 0) return -1;
+    }
+    if (host.loadGame(rom_path) != 0) return -2;
 
     std::thread([&host]() { host.runLoop(); }).detach();
     return 0;

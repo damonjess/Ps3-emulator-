@@ -24,6 +24,14 @@ object NativeEmulatorBridge {
         }.getOrElse { LaunchResult(false, "Crash in native: ${it.message}") }
     }
 
+    fun stopGame() {
+        if (nativeLoaded) runCatching { stopGameNative() }
+    }
+
+    fun updateInput(port: Int, buttonMask: Int) {
+        if (nativeLoaded) runCatching { updateInputNative(port, buttonMask) }
+    }
+
     fun setSurface(surface: android.view.Surface?) {
         if (nativeLoaded) runCatching { setSurfaceNative(surface) }
     }
@@ -45,6 +53,8 @@ object NativeEmulatorBridge {
     }
 
     @JvmStatic private external fun launchGameNative(console: String, romPath: String, cacheDir: String, saveDir: String): String
+    @JvmStatic private external fun stopGameNative()
+    @JvmStatic private external fun updateInputNative(port: Int, buttonMask: Int)
     @JvmStatic private external fun setSurfaceNative(surface: android.view.Surface?)
     @JvmStatic private external fun setCoreDirNative(coreDir: String)
     @JvmStatic private external fun setSystemDirNative(systemDir: String)

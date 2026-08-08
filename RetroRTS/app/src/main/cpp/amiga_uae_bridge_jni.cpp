@@ -2,6 +2,7 @@
 #include <atomic>
 #include <string>
 #include <android/log.h>
+#include <android/native_window_jni.h>
 #include <dlfcn.h>
 #include <fstream>
 #include "amiga_core.h"
@@ -30,6 +31,14 @@ Java_com_retrorts_ui_AmigaBridge_startAmigaNative(
 
     LOGI("Starting Amiga via bridge: game=%s", gpath);
 
+    // Validate via amiga_core logic before starting
+    auto validation = retrorts::amiga::LaunchAmigaGame(gpath);
+    if (!validation.ok) {
+        LOGE("Amiga validation failed: %s", validation.message.c_str());
+        env->ReleaseStringUTFChars(gamePath, gpath);
+        return JNI_FALSE;
+    }
+
     int init_result = retrorts::uae_init(gpath);
     if (init_result != 0) {
         LOGE("UAE initialization failed via bridge with code %d", init_result);
@@ -57,13 +66,17 @@ Java_com_retrorts_ui_AmigaBridge_stopAmigaNative(JNIEnv*, jclass) {
 extern "C" JNIEXPORT void JNICALL
 Java_com_retrorts_ui_AmigaBridge_updateInputNative(
     JNIEnv*, jclass, jint port, jint buttonMask) {
-    // Input handling via bridge will be added to LibretroHost
+    retrorts::LibretroHost::getInstance().updateJoypad(port, static_cast<uint16_t>(buttonMask));
 }
 
 extern "C" JNIEXPORT void JNICALL
 Java_com_retrorts_ui_AmigaBridge_setSurfaceNative(
-    JNIEnv*, jclass, jobject surface) {
-    // Surface handling via bridge will be added to LibretroHost
+    JNIEnv* env, jclass, jobject surface) {
+    ANativeWindow* window = nullptr;
+    if (surface) {
+        window = ANativeWindow_fromSurface(env, surface);
+    }
+    retrorts::LibretroHost::getInstance().setWindow(window);
 }
 
 extern "C" JNIEXPORT jboolean JNICALL

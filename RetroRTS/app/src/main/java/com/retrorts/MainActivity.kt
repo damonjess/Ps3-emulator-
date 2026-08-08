@@ -391,7 +391,13 @@ private fun RootApp(
     BackHandler(enabled = screen != AppScreen.SPLASH) {
         when (screen) {
             AppScreen.HOME -> {}
-            AppScreen.GAME -> { DosboxBridge.stopDosbox(); onAbandonAudioFocus(); activeGame = null; screen = AppScreen.HOME }
+            AppScreen.GAME -> { 
+                DosboxBridge.stopDosbox()
+                NativeEmulatorBridge.stopGame()
+                onAbandonAudioFocus()
+                activeGame = null
+                screen = AppScreen.HOME 
+            }
             else -> {}
         }
     }
@@ -399,7 +405,13 @@ private fun RootApp(
     when (screen) {
         AppScreen.SPLASH -> SplashScreen()
         AppScreen.NEEDS_PERMISSION -> PermissionScreen(onRequestStorage)
-        AppScreen.GAME -> activeGame?.let { DosboxPlayScreen(it) { DosboxBridge.stopDosbox(); onAbandonAudioFocus(); activeGame = null; screen = AppScreen.HOME } }
+        AppScreen.GAME -> activeGame?.let { DosboxPlayScreen(it) { 
+            DosboxBridge.stopDosbox()
+            NativeEmulatorBridge.stopGame()
+            onAbandonAudioFocus()
+            activeGame = null
+            screen = AppScreen.HOME 
+        } }
         AppScreen.HOME -> LauncherScreen(settings, onSettings = { /* settings are now inline — no screen change needed */ }, onAbout = { showAbout = true }, onLaunch = { game ->
             isLaunching = true
             scope.launch {
@@ -1328,8 +1340,14 @@ private fun RtsOverlay(modifier: Modifier, onExit: () -> Unit, onKeyboard: () ->
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Button(onClick = {}) { Text("L") }
-        Button(onClick = {}) { Text("R") }
+        Button(
+            onClick = { NativeEmulatorBridge.updateInput(0, 1 shl 10) }, // L
+            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3A3A3A))
+        ) { Text("L") }
+        Button(
+            onClick = { NativeEmulatorBridge.updateInput(0, 1 shl 11) }, // R
+            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3A3A3A))
+        ) { Text("R") }
         Button(
             onClick = onKeyboard,
             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3A3A3A)),

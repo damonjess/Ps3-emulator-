@@ -9,7 +9,7 @@
 
 namespace retrorts {
 
-enum class CoreType { NONE, PS1, AMIGA, DOSBOX };
+enum class CoreType { NONE, PS1, AMIGA, DOSBOX, NINTENDO_DSI };
 
 class LibretroHost {
 public:
@@ -21,6 +21,7 @@ public:
     void stop();
 
     void sendKeyString(const std::string& text);
+    void updateJoypad(int port, uint16_t state);
 
     void setWindow(ANativeWindow* window);
 
@@ -42,6 +43,7 @@ private:
     void* coreLib_ = nullptr;
     ANativeWindow* window_ = nullptr;
     std::atomic<bool> running_{false};
+    std::atomic<uint16_t> padState_[2]{0, 0};
     std::recursive_mutex coreMutex_;
 
     std::string systemDir_;
@@ -74,6 +76,7 @@ extern "C" {
     int PCSX_Run(const char* bios, const char* disc, const char* saveDir);
     int uae_init(const char* rom_path);
     int dosbox_init(const char* config_path, const char* saveDir);
+    int dsi_init(const char* rom_path);
 }
 
 } // namespace retrorts
